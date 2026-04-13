@@ -1,83 +1,46 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Calendar, Clock, User } from 'lucide-react';
+import React from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Calendar, Clock, MapPin } from 'lucide-react';
 import { ScreenContainer } from '../components/layout/ScreenContainer';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { MedicalIllustration } from '../components/illustrations/MedicalIllustration';
-import { apiGet } from '../services/api';
-import { useAuth } from '../context/AuthContext';
 
 export function BookingConfirmation() {
-  const navigate = useNavigate();
   const location = useLocation();
-  const { role } = useAuth();
-  const [appointment, setAppointment] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [imageError, setImageError] = useState(false);
+  const navigate = useNavigate();
 
-  const appointmentId = location.state?.appointment_id;
+  const {
+    appointment_id,
+    doctor_name,
+    specialization,
+    doctor_image,
+    date,
+    time,
+  } = location.state ?? {};
 
-  useEffect(() => {
-    if (appointmentId) {
-      fetchAppointmentDetails();
-    } else {
-      setIsLoading(false);
-    }
-  }, [appointmentId]);
-
-  const fetchAppointmentDetails = async () => {
-    try {
-      const data = await apiGet(`/api/appointment/${appointmentId}`);
-      setAppointment(data);
-    } catch (error) {
-      console.error('Failed to fetch appointment details:', error);
-    } finally {
-      setIsLoading(false);
-    }
+  const formatDate = (raw: string): string => {
+    if (!raw) return "—";
+    const [y, m, d] = raw.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    return dt.toLocaleDateString("en-US", {
+      weekday: "long", year: "numeric",
+      month:   "short", day: "numeric",
+    });
   };
 
-  const dashboardPath = 
-    role === 'doctor' ? '/doctor-dashboard' :
-    role === 'admin' ? '/admin-dashboard' :
-    '/patient-dashboard';
-
-  const formatTime = (timeStr: string) => {
-    if (!timeStr) return '10:00 AM - 10:30 AM';
-    if (timeStr.includes('-')) return timeStr;
-    
-    try {
-        const [hours, minutes] = timeStr.split(':');
-        const date = new Date();
-        date.setHours(parseInt(hours), parseInt(minutes));
-        
-        const startTime = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-        date.setMinutes(date.getMinutes() + 30);
-        const endTime = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-        
-        return `${startTime} - ${endTime}`;
-    } catch (e) {
-        return timeStr;
-    }
+  const formatTime = (raw: string): string => {
+    if (!raw) return "—";
+    const [h, m] = raw.split(":").map(Number);
+    const suffix = h >= 12 ? "PM" : "AM";
+    const hour   = h % 12 || 12;
+    return `${String(hour).padStart(2,"0")}:${String(m).padStart(2,"0")} ${suffix}`;
   };
 
-  if (isLoading) {
-    return (
-      <ScreenContainer className="bg-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </ScreenContainer>
-    );
-  }
-
-  const doctorImage = imageError ? null : `http://localhost:5000/api/uploads/doctors/${appointment?.doctor_id}.jpg`;
+  const avatarSrc = doctor_image ?? null;
 
   return (
-    <ScreenContainer 
-      className="bg-white" 
-      noScroll 
-      showBack 
-      onBack={() => navigate(dashboardPath)}
-    >
+    <ScreenContainer className="bg-white" noScroll>
       <div className="flex flex-col h-full px-6 py-8">
         <div className="flex-1 flex flex-col items-center justify-center text-center">
           <MedicalIllustration type="success" className="w-48 h-48 mb-6" />
@@ -91,51 +54,46 @@ export function BookingConfirmation() {
 
           <Card className="w-full bg-surface border-none mb-6">
             <div className="flex items-center gap-4 mb-4 pb-4 border-b border-gray-200">
-              {doctorImage ? (
+              {avatarSrc ? (
                 <img
-                  src={doctorImage}
-                  alt="Doctor"
-                  onError={() => setImageError(true)}
-                  className="w-14 h-14 rounded-full object-cover bg-gray-100" />
+                  src={avatarSrc}
+                  alt={doctor_name}
+                  className="w-14 h-14 rounded-full object-cover"
+                  onError={e => { (e.target as HTMLImageElement).src = "/default-avatar.png"; }}
+                />
               ) : (
-                <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center text-gray-400">
-                  <User size={24} />
+                <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xl">
+                  {doctor_name?.[0] ?? "D"}
                 </div>
               )}
+              
+              <div className="text-left">
+                <h3 className="font-bold text-text-primary">{doctor_name ?? "Doctor"}</h3>
+                <p className="text-sm text-primary">{specialization ?? ""}</p>
+              </div>
+            </div>
 
-              <div className="text-left py-4 px-2">
-                <div className="mb-4">
-                  <span className="text-[10px] font-black text-primary uppercase tracking-wider block mb-1">Doctor Name</span>
-                  <h3 className="font-bold text-text-primary text-xl">
-                    {appointment?.doctor_name || 'Doctor'}
-                  </h3>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="text-[10px] font-black text-primary uppercase tracking-wider block mb-1">Date</span>
-                    <div className="flex items-center gap-2 text-sm font-bold text-text-primary">
-                      <Calendar size={14} className="text-primary" />
-                      {appointment?.date || 'Select Date'}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-black text-primary uppercase tracking-wider block mb-1">Time</span>
-                    <div className="flex items-center gap-2 text-sm font-bold text-text-primary">
-                      <Clock size={14} className="text-primary" />
-                      {formatTime(appointment?.time || appointment?.time_slot)}
-                    </div>
-                  </div>
-                </div>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 text-sm text-text-secondary">
+                <Calendar size={18} className="text-primary" />
+                <span>{formatDate(date)}</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-text-secondary">
+                <Clock size={18} className="text-primary" />
+                <span>{formatTime(time)}</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-text-secondary">
+                <MapPin size={18} className="text-primary" />
+                <span>Video Consultation</span>
               </div>
             </div>
           </Card>
         </div>
 
-        <Button fullWidth onClick={() => navigate(dashboardPath)}>
+        <Button fullWidth onClick={() => navigate('/patient-dashboard')}>
           Go to Dashboard
         </Button>
       </div>
-    </ScreenContainer>
-  );
+    </ScreenContainer>);
+
 }

@@ -16,15 +16,6 @@
   --color-text-secondary: #757575;
   --color-surface: #FFFFFF;
   --color-background: #F5F7FA;
-  --color-border: #E5E7EB;
-}
-
-body[data-theme="dark"] {
-  --color-background: #121212;
-  --color-surface: #1E1E1E;
-  --color-text-primary: #FFFFFF;
-  --color-text-secondary: #B0B0B0;
-  --color-border: #333333;
 }
 
 * {
@@ -33,95 +24,10 @@ body[data-theme="dark"] {
 
 body {
   font-family: 'Roboto', 'Inter', system-ui, -apple-system, sans-serif;
-  background-color: var(--color-background);
-  color: var(--color-text-primary);
+  background-color: #F5F7FA;
   min-height: 100vh;
-  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Dark Mode Overrides */
-body[data-theme="dark"] {
-  background-color: var(--color-background) !important;
-  color: var(--color-text-primary) !important;
-}
-
-body[data-theme="dark"] .bg-white,
-body[data-theme="dark"] .bg-surface,
-body[data-theme="dark"] .bg-gray-50,
-body[data-theme="dark"] .bg-\[\#F5F7FA\] {
-  background-color: var(--color-surface) !important;
-}
-
-body[data-theme="dark"] .bg-gray-100 {
-  background-color: #2A2A2A !important;
-}
-
-body[data-theme="dark"] .text-text-primary,
-body[data-theme="dark"] .text-gray-900,
-body[data-theme="dark"] .text-gray-800 {
-  color: var(--color-text-primary) !important;
-}
-
-body[data-theme="dark"] .text-text-secondary,
-body[data-theme="dark"] .text-gray-600,
-body[data-theme="dark"] .text-gray-500,
-body[data-theme="dark"] .text-gray-400 {
-  color: var(--color-text-secondary) !important;
-}
-
-body[data-theme="dark"] .border-gray-100,
-body[data-theme="dark"] .border-gray-200,
-body[data-theme="dark"] .border-gray-50,
-body[data-theme="dark"] .divide-gray-50,
-body[data-theme="dark"] .divide-gray-100 {
-  border-color: var(--color-border) !important;
-}
-
-body[data-theme="dark"] .shadow-sm,
-body[data-theme="dark"] .shadow-soft,
-body[data-theme="dark"] .shadow-md,
-body[data-theme="dark"] .shadow-2xl,
-body[data-theme="dark"] .shadow-3xl {
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4) !important;
-}
-
-body[data-theme="dark"] .hover\:bg-gray-50:hover,
-body[data-theme="dark"] .hover\:bg-gray-100:hover {
-  background-color: #333333 !important;
-}
-
-body[data-theme="dark"] .bg-primary\/10 {
-  background-color: rgba(30, 136, 229, 0.15) !important;
-  color: #64B5F6 !important;
-}
-
-body[data-theme="dark"] input,
-body[data-theme="dark"] textarea,
-body[data-theme="dark"] select {
-  background-color: #2A2A2A !important;
-  color: var(--color-text-primary) !important;
-  border-color: var(--color-border) !important;
-}
-
-/* Chat Dark Mode */
-body[data-theme="dark"] .bg-primary {
-  background-color: #1565C0 !important;
-  color: #FFFFFF !important;
-}
-
-body[data-theme="dark"] [class*="bg-gray-100"].rounded-2xl {
-  background-color: #333333 !important;
-  color: #FFFFFF !important;
-}
-
-/* Video Consultation Overrides */
-body[data-theme="dark"] .bg-white\/10 {
-  background-color: rgba(255, 255, 255, 0.05) !important;
-}
-
-body[data-theme="dark"] .bg-black\/40 {
-  background-color: rgba(0, 0, 0, 0.7) !important;
-}
 /* Custom scrollbar for web */
 ::-webkit-scrollbar {
   width: 8px;
@@ -137,6 +43,7 @@ body[data-theme="dark"] .bg-black\/40 {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
 /* Hide scrollbar for horizontal scroll */
 .scrollbar-hide {
   -ms-overflow-style: none;
@@ -145,6 +52,7 @@ body[data-theme="dark"] .bg-black\/40 {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
 /* Animations */
 @keyframes fade-in-up {
   from {

@@ -1,47 +1,58 @@
-import React, { ButtonHTMLAttributes, ReactNode } from 'react';
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  children?: ReactNode;
+import React from "react";
+
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
   fullWidth?: boolean;
   isLoading?: boolean;
+  size?: 'sm' | 'md' | 'lg';
   icon?: React.ReactNode;
 }
-export function Button({
+
+export const Button: React.FC<ButtonProps> = ({
   children,
   variant = 'primary',
   fullWidth = false,
   isLoading = false,
-  icon,
   className = '',
+  size = 'md',
+  icon,
+  disabled,
   ...props
-}: ButtonProps) {
-  const baseStyles =
-  'h-12 min-h-[48px] px-6 rounded-xl font-medium transition-all duration-200 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:pointer-events-none';
+}) => {
+  const baseStyles = "inline-flex items-center justify-center font-bold transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100 rounded-xl";
+  
   const variants = {
-    primary:
-    'bg-primary text-white shadow-md shadow-primary/20 hover:bg-primary-dark',
-    secondary:
-    'bg-secondary text-white shadow-md shadow-secondary/20 hover:bg-secondary-dark',
-    outline:
-    'border-2 border-primary text-primary bg-transparent hover:bg-primary/5',
-    ghost: 'bg-transparent text-text-secondary hover:bg-gray-100',
-    danger:
-    'bg-red-500 text-white shadow-md shadow-red-500/20 hover:bg-red-600'
+    primary: "bg-primary text-white shadow-soft hover:bg-primary-dark hover:shadow-md",
+    secondary: "bg-secondary text-white shadow-soft hover:bg-secondary-dark hover:shadow-md",
+    outline: "border-2 border-primary text-primary hover:bg-primary/5",
+    ghost: "text-primary hover:bg-primary/5",
+    danger: "bg-red-500 text-white shadow-soft hover:bg-red-600 hover:shadow-md"
   };
+
+  const sizes = {
+    sm: "h-10 px-4 text-sm",
+    md: "h-12 px-6 text-base",
+    lg: "h-14 px-8 text-lg"
+  };
+
+  const widthStyle = fullWidth ? "w-full" : "";
+
   return (
     <button
-      className={`${baseStyles} ${variants[variant]} ${fullWidth ? 'w-full' : ''} ${className}`}
-      disabled={isLoading || props.disabled}
-      {...props}>
-
-      {isLoading ?
-      <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" /> :
-
-      <>
-          {icon}
+      className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${widthStyle} ${className}`}
+      disabled={disabled || isLoading}
+      {...props}
+    >
+      {isLoading ? (
+        <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+      ) : (
+        <div className="flex items-center gap-2">
+          {icon && <span className="shrink-0">{icon}</span>}
           {children}
-        </>
-      }
-    </button>);
+        </div>
+      )}
+    </button>
+  );
+};
 
-}
+export default Button;

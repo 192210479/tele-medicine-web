@@ -58,7 +58,7 @@ export function GetStartedScreen() {
             fullWidth
             onClick={() => navigate('/login')}
             icon={<LogIn size={20} />}>
-
+            
             Login
           </Button>
 
@@ -67,14 +67,14 @@ export function GetStartedScreen() {
             variant="secondary"
             onClick={() => navigate('/register')}
             icon={<UserPlus size={20} />}>
-
+            
             Create Account
           </Button>
 
           <button
             onClick={() => navigate('/login')}
             className="w-full text-center text-white/70 text-base font-medium py-3 hover:text-white transition-colors">
-
+            
             Continue as Guest
           </button>
         </div>

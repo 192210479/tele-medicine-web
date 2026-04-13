@@ -19,10 +19,10 @@ export function NotificationSettingsScreen() {
   <button
     onClick={onChange}
     className={`w-12 h-6 rounded-full transition-colors relative ${checked ? 'bg-primary' : 'bg-gray-300'}`}>
-
+    
       <div
       className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${checked ? 'left-7' : 'left-1'}`} />
-
+    
     </button>;
 
   const SettingItem = ({
@@ -60,7 +60,7 @@ export function NotificationSettingsScreen() {
               appointments: !s.appointments
             }))
             } />
-
+          
           <SettingItem
             icon={Pill}
             label="Prescription Updates"
@@ -72,7 +72,7 @@ export function NotificationSettingsScreen() {
               prescriptions: !s.prescriptions
             }))
             } />
-
+          
           <SettingItem
             icon={AlertCircle}
             label="System Alerts"
@@ -84,7 +84,7 @@ export function NotificationSettingsScreen() {
               system: !s.system
             }))
             } />
-
+          
           <SettingItem
             icon={Bell}
             label="Offers & Tips"
@@ -96,7 +96,7 @@ export function NotificationSettingsScreen() {
               offers: !s.offers
             }))
             } />
-
+          
         </div>
 
         <Button fullWidth>Save Preferences</Button>

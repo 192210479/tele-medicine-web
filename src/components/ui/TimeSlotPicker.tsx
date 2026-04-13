@@ -1,4 +1,4 @@
-import React from 'react';
+import * as React from 'react';
 interface TimeSlotPickerProps {
   selectedTime: string;
   onSelect: (time: string) => void;
@@ -28,7 +28,7 @@ export function TimeSlotPicker({
             py-2 px-1 rounded-lg text-sm font-medium border transition-all
             ${selectedTime === time ? 'border-primary bg-primary text-white shadow-md' : 'border-gray-200 bg-white text-text-primary hover:border-primary/50'}
           `}>
-
+        
           {time}
         </button>
       )}

@@ -1,150 +1,156 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, ChevronRight, User, Calendar, Search } from 'lucide-react';
+import { Search, Calendar, Clock, User, ChevronRight, FileText } from 'lucide-react';
 import { ScreenContainer } from '../components/layout/ScreenContainer';
 import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { apiGet } from '../services/api';
-import { useAuth } from '../context/AuthContext';
+
+import { getSocket } from '../utils/socketUtils';
 
 export function PatientPrescriptionsScreen() {
   const navigate = useNavigate();
-  const { userId } = useAuth();
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    if (userId) {
-      loadAllPrescriptions();
-    }
-  }, [userId]);
-
-  const loadAllPrescriptions = async () => {
-    setIsLoading(true);
+  const fetchPrescriptions = async () => {
+    const rawUserId = localStorage.getItem('user_id') || localStorage.getItem('auth_token');
+    const userId = parseInt(rawUserId || '0');
+    const role = 'patient';
+    
     try {
-      // 1. Get all appointments for the patient
-      const appointments = await apiGet('/api/my-appointments', { 
-        user_id: userId, 
-        role: 'patient' 
-      });
-
-      // 2. For each appointment, fetch prescription details
-      const prescriptionPromises = (appointments || []).map(async (apt: any) => {
-        try {
-          const data = await apiGet(`/api/prescription/${apt.id}`, {
-            user_id: userId,
-            role: 'patient'
-          });
-          if (data && data.diagnosis) {
-            return {
-              ...data,
-              appointment_id: apt.id,
-              date: apt.date,
-              doctor_name: apt.doctor_name || data.doctor_name
-            };
-          }
-          return null;
-        } catch (e) {
-          return null; // Ignore if no prescription exists
-        }
-      });
-
-      const results = await Promise.all(prescriptionPromises);
-      const filteredResults = results.filter(item => item !== null);
-      
-      // Sort by date DESC
-      filteredResults.sort((a, b) => b.date.localeCompare(a.date));
-      
-      setPrescriptions(filteredResults);
-    } catch (error) {
-      console.error('Failed to load prescriptions:', error);
+      // We fetch history and filter for Completed (Prescription-ready)
+      const res = await fetch(`/api/patient/history/${userId}?user_id=${userId}&role=${role}`);
+      if (res.ok) {
+        const data = await res.json();
+        // Filter only completed consultations which usually have prescriptions
+        const filtered = (data || []).filter((item: any) => 
+          item.status?.toLowerCase() === 'completed'
+        );
+        setPrescriptions(filtered);
+      }
+    } catch (err) {
+      console.error('Failed to fetch prescriptions', err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const filteredPrescriptions = prescriptions.filter(item => 
-    item.doctor_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.diagnosis?.toLowerCase().includes(searchQuery.toLowerCase())
+  useEffect(() => {
+    fetchPrescriptions();
+
+    // REAL-TIME: Refresh list when a new prescription is submitted
+    const socket = getSocket();
+    const handleRefresh = () => {
+      fetchPrescriptions();
+    };
+
+    socket.on('prescription_submitted', handleRefresh);
+    socket.on('prescription_ready', handleRefresh);
+
+    return () => {
+      socket.off('prescription_submitted', handleRefresh);
+      socket.off('prescription_ready', handleRefresh);
+    };
+  }, []);
+
+  const filteredData = prescriptions.filter(item => 
+    item.doctor_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.date?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.specialization?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
-    <ScreenContainer title="My Prescriptions" showBack className="pb-8">
-      <div className="px-6 py-4 space-y-4">
-        {/* Search */}
-        <div className="relative">
-          <Search
-            size={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-          />
-          <input
-            type="text"
-            placeholder="Search by doctor or diagnosis"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-11 pl-10 pr-4 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:border-primary shadow-sm"
-          />
+    <ScreenContainer title="My Prescriptions" showBack className="pb-8 bg-[#F8FAFC]">
+      <div className="max-w-6xl mx-auto px-6 py-8">
+        
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-10">
+          <div className="space-y-1">
+            <h2 className="text-3xl font-black text-gray-900 tracking-tight">Prescription Vault</h2>
+            <p className="text-gray-500 font-medium">Access all your verified medical prescriptions in one place.</p>
+          </div>
+
+          {/* Search bar */}
+          <div className="relative w-full lg:w-1/3">
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by doctor or date..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-12 pr-4 py-4 rounded-2xl border border-gray-100 bg-white shadow-soft focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
+            />
+          </div>
         </div>
 
+        {/* List */}
         {isLoading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <div className="flex flex-col items-center justify-center py-32 space-y-4">
+            <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-gray-500 font-black uppercase tracking-widest text-[10px]">Accessing Secure Records...</p>
           </div>
-        ) : filteredPrescriptions.length > 0 ? (
-          <div className="space-y-4">
-            {filteredPrescriptions.map((item) => (
+        ) : filteredData.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+            {filteredData.map((item) => (
               <Card
-                key={item.appointment_id}
-                className="hover:border-primary/30 transition-colors cursor-pointer group"
-                onClick={() => navigate(`/prescription/${item.appointment_id}`)}
+                key={item.appointment_id || item.id}
+                onClick={() => navigate(`/prescription/view/${item.appointment_id || item.id}`)}
+                className="p-0 rounded-[2rem] bg-white border border-transparent shadow-xl hover:shadow-2xl hover:border-primary/20 transition-all flex flex-col group cursor-pointer overflow-hidden"
               >
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-primary border border-blue-100">
-                      <User size={24} />
+                {/* Header Decoration */}
+                <div className="h-2 bg-gradient-to-r from-primary to-blue-400 w-full" />
+                
+                <div className="p-8 flex flex-col h-full">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all shadow-inner">
+                       <FileText size={28} />
                     </div>
-                    <div>
-                      <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors">
-                        {item.doctor_name}
-                      </h3>
-                      <div className="flex items-center gap-1.5 text-xs text-text-secondary mt-1">
-                        <Calendar size={12} />
-                        {item.date}
-                      </div>
+                    <div className="text-right">
+                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Status</p>
+                       <span className="px-3 py-1.5 rounded-xl bg-green-100 text-green-700 text-[10px] font-black uppercase tracking-widest shadow-sm">
+                          Verified
+                       </span>
                     </div>
                   </div>
-                  <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-primary/10 group-hover:text-primary transition-all">
-                    <ChevronRight size={18} />
+
+                  <div className="mb-6">
+                    <h3 className="font-black text-2xl text-gray-900 group-hover:text-primary transition-colors leading-tight mb-1">
+                      Dr. {item.doctor_name}
+                    </h3>
+                    <p className="text-sm text-primary font-bold uppercase tracking-wider opacity-80">
+                      {item.specialization || "General Consultation"}
+                    </p>
+                  </div>
+                  
+                  {/* Info Box */}
+                  <div className="bg-slate-50 rounded-2xl p-5 space-y-3 mb-8 border border-slate-100/50">
+                    <div className="flex items-center gap-3 text-gray-600 font-bold text-sm">
+                      <Calendar size={18} className="text-primary/60" />
+                      <span>{item.date}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-gray-600 font-bold text-sm">
+                      <Clock size={18} className="text-primary/60" />
+                      <span>{item.time || 'N/A'}</span>
+                    </div>
+                  </div>
+
+                  {/* Action Link */}
+                  <div className="mt-auto pt-6 border-t border-gray-100">
+                    <div className="flex items-center justify-center gap-2 w-full py-4 bg-primary text-white text-xs font-black uppercase tracking-[0.2em] rounded-2xl shadow-lg shadow-primary/20 group-hover:scale-[1.02] active:scale-95 transition-all">
+                      VIEW PRESCRIPTION <ChevronRight size={18} strokeWidth={3} />
+                    </div>
                   </div>
                 </div>
-
-                <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 mb-4">
-                  <p className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Diagnosis Preview</p>
-                  <p className="text-sm font-medium text-text-primary line-clamp-1">
-                    {item.diagnosis}
-                  </p>
-                </div>
-
-                <Button 
-                    fullWidth 
-                    variant="outline" 
-                    className="h-10 text-xs font-bold border-gray-200 group-hover:border-primary group-hover:text-primary"
-                    icon={<FileText size={14} />}
-                >
-                  View Full Prescription
-                </Button>
               </Card>
             ))}
           </div>
         ) : (
-          <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
-            <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-200">
-              <FileText size={40} />
+          <div className="py-32 bg-white rounded-[3rem] border border-dashed border-gray-200 text-center flex flex-col items-center max-w-2xl mx-auto shadow-inner">
+            <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center mb-6">
+               <FileText size={48} className="text-gray-200" />
             </div>
-            <h3 className="text-lg font-bold text-text-primary">No Prescriptions Found</h3>
-            <p className="text-text-secondary text-sm max-w-[200px] mx-auto mt-2">
-              You haven't received any prescriptions from your doctors yet.
+            <h3 className="text-2xl font-black text-gray-900 mb-2">No Prescriptions Found</h3>
+            <p className="text-gray-500 font-medium max-w-sm">
+              {searchTerm ? `No records match "${searchTerm}".` : "You haven't received any digital prescriptions yet. Completed consultations will appear here automatically."}
             </p>
           </div>
         )}

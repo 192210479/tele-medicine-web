@@ -1,237 +1,438 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Star, Globe, DollarSign, Award, ChevronLeft, ChevronRight, Clock, Calendar as CalendarIcon, Lock } from 'lucide-react';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { Star, Globe, DollarSign, Award, Clock } from 'lucide-react';
 import { ScreenContainer } from '../components/layout/ScreenContainer';
 import { DoctorCard } from '../components/ui/DoctorCard';
+import { DatePicker } from '../components/ui/DatePicker';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
-import { apiGet, apiPost } from '../services/api';
+
+import socketService from '../services/consultationSocket';
 import { useAuth } from '../context/AuthContext';
-import socket from '../services/socketService';
+
+interface SlotType {
+  id: number;
+  doctor_id: number;
+  date: string;        // "YYYY-MM-DD"
+  time_slot: string;   // "HH:MM"
+  status: 'Available' | 'Booked';
+}
+
+// ── IST-aware slot validity check ──────────────────────────────────────
+function isSlotStillValid(slotDate: string, slotTime: string): boolean {
+  const nowIST = new Date(
+    new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+  );
+  const [year, month, day] = slotDate.split("-").map(Number);
+  const [hours, minutes] = String(slotTime).slice(0, 5).split(":").map(Number);
+  const slotDateTime = new Date(year, month - 1, day, hours, minutes, 0);
+  return slotDateTime > nowIST;
+}
 
 export function AppointmentBooking() {
-  const { role, userId } = useAuth();
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
-  const [selectedDoctor, setSelectedDoctor] = useState<any>(null);
-  const [doctors, setDoctors] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const location = useLocation();
+  const params = useParams();
 
-  // Calendar & Slot State
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [selectedTime, setSelectedTime] = useState<string | null>(null);
-  const [selectedSlotId, setSelectedSlotId] = useState<number | null>(null);
-  const [availableSlots, setAvailableSlots] = useState<any[]>([]);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  // @ts-ignore
+  const { userId } = useAuth();
+
+  // Guaranteed resolver — tries auth context first, then localStorage
+  const getPatientId = (): number | null => {
+    // From auth context
+    if (userId) return Number(userId);
+
+    // From localStorage — try every common key name your app might use
+    const keys = ["user_id", "userId", "id", "patient_id", "auth_token"];
+    for (const key of keys) {
+      const val = localStorage.getItem(key);
+      if (val && !isNaN(Number(val))) return Number(val);
+    }
+
+    // From sessionStorage fallback
+    const keys2 = ["user_id", "userId", "id"];
+    for (const key of keys2) {
+      const val = sessionStorage.getItem(key);
+      if (val && !isNaN(Number(val))) return Number(val);
+    }
+
+    return null;
+  };
+
+  const doctorId = location.state?.doctorId ?? params.doctorId;
+
+  const [step, setStep] = useState(1);
+  const [doctors, setDoctors] = useState<any[]>([]);
+  const [isLoadingDoctors, setIsLoadingDoctors] = useState(true);
+
+  const [selectedDoctor, setSelectedDoctor] = useState<any>(null);
+  const [slots, setSlots] = useState<any[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [selectedSlot, setSelectedSlot] = useState<any>(null);
+  const [isBooking, setIsBooking] = useState(false);
+
+  const [filteredSlots, setFilteredSlots] = useState<any[]>([]);
+
+  const fetchSlots = useCallback(async (docId: string) => {
+    if (!docId) {
+      console.warn("Doctor ID missing, skipping fetch");
+      return;
+    }
+    console.log("Doctor ID:", docId);
+    try {
+      const res = await fetch(`/api/doctor/availability/${docId}`);
+
+      if (!res.ok) {
+        console.error("API error:", res.status);
+        return;
+      }
+
+      const data = await res.json();
+      console.log("Slots:", data);
+      const available = data.filter((s: SlotType) => s.status === 'Available');
+      setSlots(data); // Store all data, but maybe filter later or use filteredSlots
+
+      // Auto-select first available date if none selected
+      if (!selectedDate && data.length > 0) {
+        const firstAvailable = data.find((s: any) => s.status === 'Available');
+        if (firstAvailable) setSelectedDate(firstAvailable.date);
+      }
+    } catch (err) {
+      console.error('Fetch failed:', err);
+    }
+  }, [selectedDate]);
+
+  const fetchDoctors = useCallback(async () => {
+    try {
+      const res = await fetch('/api/doctors');
+      if (res.ok) {
+        const data = await res.json();
+        const mappedDoctors = data.map((d: any) => ({
+          id: d.id,
+          name: d.name,
+          specialty: d.specialization || 'Specialist',
+          rating: d.rating || 0,
+          reviews: d.reviews_count || 0,
+          experience: `${d.experience || 0} Years`,
+          languages: typeof d.languages === 'string' ? d.languages.split(', ') : [],
+          fee: `₹${d.fee || 0}`,
+          image: d.profile_image || null,
+        }));
+        setDoctors(mappedDoctors);
+
+        if (doctorId) {
+          const docIdNum = typeof doctorId === 'string' ? parseInt(doctorId, 10) : doctorId;
+          const preselectedDoc = mappedDoctors.find((d: any) => d.id === docIdNum);
+          if (preselectedDoc) {
+            setSelectedDoctor(preselectedDoc);
+            setStep(2); // Skip Step 1 and go to Doctor Profile
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch doctors', err);
+    } finally {
+      setIsLoadingDoctors(false);
+    }
+  }, [doctorId, setDoctors, doctorId]);
 
   useEffect(() => {
     fetchDoctors();
-  }, []);
+  }, [fetchDoctors]);
 
-  const fetchDoctors = async () => {
-    setIsLoading(true);
-    try {
-      const data = await apiGet('/api/doctors');
-      setDoctors(data);
-    } catch (error) {
-      console.error('Failed to fetch doctors:', error);
-    } finally {
-      setIsLoading(false);
+  useEffect(() => {
+    socketService.connect();
+    const handleRatingUpdate = () => {
+      fetchDoctors();
+    };
+
+    socketService.on('rating_updated', handleRatingUpdate);
+    window.addEventListener('rating-updated', handleRatingUpdate);
+    window.addEventListener('focus', handleRatingUpdate);
+
+    return () => {
+      socketService.off('rating_updated', handleRatingUpdate);
+      window.removeEventListener('rating-updated', handleRatingUpdate);
+      window.removeEventListener('focus', handleRatingUpdate);
+    };
+  }, [fetchDoctors]);
+
+  useEffect(() => {
+    if (!selectedDoctor?.id) return;
+
+    socketService.connect();
+    const handleRefresh = () => fetchSlots(selectedDoctor.id);
+
+    socketService.on('slot_updated', handleRefresh);
+    socketService.on('appointment_booked', handleRefresh);
+
+    const interval = setInterval(() => {
+      if (selectedDoctor?.id) fetchSlots(selectedDoctor.id);
+    }, 30000);
+
+    window.addEventListener('focus', handleRefresh);
+
+    return () => {
+      socketService.off('slot_updated', handleRefresh);
+      socketService.off('appointment_booked', handleRefresh);
+      clearInterval(interval);
+      window.removeEventListener('focus', handleRefresh);
+    };
+  }, [selectedDoctor?.id, fetchSlots]);
+
+  useEffect(() => {
+    if (selectedDoctor && doctors.length > 0) {
+      const updated = doctors.find(d => d.id === selectedDoctor.id);
+      if (updated) setSelectedDoctor(updated);
     }
-  };
+  }, [doctors]);
 
-  const fetchAvailability = useCallback(async () => {
-    if (!selectedDoctor) return;
-    try {
-      const data = await apiGet(`/api/doctor/availability/${selectedDoctor.id}`);
-      if (Array.isArray(data)) {
-        setAvailableSlots(data);
+  // Filter slots by selected date AND remove already-passed time slots
+  useEffect(() => {
+    if (slots.length > 0 && selectedDate) {
+      const filtered = slots.filter(slot => {
+        const { date, status, is_booked } = slot;
+
+        // Robust check: must be explicitly "Available" and not marked as "is_booked" by the backend
+        const isAvailable = (status === "Available" || status === "available" || status == null)
+          && status !== "Booked" && status !== "booked"
+          && !is_booked;
+
+        return (
+          date === selectedDate &&
+          isAvailable &&
+          isSlotStillValid(date, slot.time_slot) // ← IST time check
+        );
+      });
+      console.log("Filtered Slots:", filtered);
+      setFilteredSlots(filtered);
+    } else {
+      setFilteredSlots([]);
+    }
+  }, [slots, selectedDate]);
+
+  // ── 60-second auto-refresh: re-fetch so expired slots disappear ──────
+  useEffect(() => {
+    if (!selectedDoctor?.id) return;
+    const intervalId = setInterval(() => {
+      fetchSlots(selectedDoctor.id);
+    }, 60_000);
+    return () => clearInterval(intervalId);
+  }, [selectedDoctor?.id, fetchSlots]);
+
+  // ── 30-second check: deselect slot if it expires while user is choosing
+  useEffect(() => {
+    if (!selectedSlot) return;
+    const checkId = setInterval(() => {
+      if (!isSlotStillValid(selectedSlot.date, selectedSlot.time_slot)) {
+        setSelectedSlot(null);
       }
-    } catch (error) {
-      console.error('Failed to fetch availability:', error);
-      setAvailableSlots([]);
-    }
-  }, [selectedDoctor]);
+    }, 30_000);
+    return () => clearInterval(checkId);
+  }, [selectedSlot]);
 
-  useEffect(() => {
-    if (step === 3 && selectedDoctor) {
-      fetchAvailability();
-    }
-  }, [step, selectedDoctor, fetchAvailability]);
-
-  // Socket Listeners for Auto Update
-  useEffect(() => {
-    if (socket && selectedDoctor && step === 3) {
-      const handleRefresh = (data: any) => {
-        if (data.doctor_id === selectedDoctor.id) {
-          fetchAvailability();
-        }
-      };
-
-      socket.on("availability_updated", handleRefresh);
-      socket.on("slot_booked", handleRefresh);
-
-      return () => {
-        socket.off("availability_updated", handleRefresh);
-        socket.off("slot_booked", handleRefresh);
-      };
-    }
-  }, [selectedDoctor, step, fetchAvailability]);
-
-  const handleDoctorSelect = (doc: any) => {
+  const handleDoctorSelect = async (doc: any) => {
     setSelectedDoctor(doc);
     setStep(2);
+    fetchSlots(doc.id);
   };
 
-  const handleStartBooking = () => {
-    setStep(3);
-  };
-
-  // 4, 5, 6, 7. FIX BOOKING LOGIC, FORMAT, STATUS, AND EMIT
   const handleConfirmBooking = async () => {
-    // 4. Validate inputs
-    if (!selectedSlotId) {
-        alert("Please select a time slot before confirming.");
-        return;
+    if (!selectedSlot) {
+      alert("Please select a time slot.");
+      return;
     }
-    
-    if (!selectedDoctor || !userId) {
-        console.error("Missing doctor or patient ID");
-        return;
-    }
-    
-    setIsLoading(true);
-    try {
-      // 5. CORRECT BOOKING REQUEST FORMAT
-      // Backend only expects availability_id, user_id, role.
-      const response = await apiPost('/api/appointment/book', {
-        user_id: userId,
-        role: "patient",
-        availability_id: selectedSlotId
-      });
-      
-      // 6. UPDATE SLOT STATUS AFTER BOOKING
-      setAvailableSlots(prev => 
-        prev.map(s => (s.id || s.availability_id) === selectedSlotId ? { ...s, is_booked: true } : s)
-      );
 
-      // 7. REFRESH DOCTOR DASHBOARD (emit specific event)
-      if (socket) {
-        socket.emit("new_appointment_created", {
-          doctor_id: selectedDoctor.id,
-          patient_id: userId,
-          availability_id: selectedSlotId
+    const patientId = getPatientId();
+
+    if (!patientId) {
+      alert("Session expired. Please log out and log in again.");
+      return;
+    }
+
+    setIsBooking(true);
+
+    try {
+      const res = await fetch("/api/appointment/book", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: patientId,
+          role: "patient",          // ALWAYS hardcode "patient" here
+          availability_id: selectedSlot.id,    // slot's DB primary key
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error ?? "Booking failed. Please try again.");
+        return;
+      }
+
+      if (data.payment_required) {
+        // Attempt dynamically loading Razorpay script
+        const loadRazorpay = () => new Promise((resolve) => {
+          const script = document.createElement("script");
+          script.src = "https://checkout.razorpay.com/v1/checkout.js";
+          script.onload = () => resolve(true);
+          script.onerror = () => resolve(false);
+          document.body.appendChild(script);
         });
-        
-        // Also emit old event for backward compatibility if needed
-        socket.emit("slot_booked", {
-          doctor_id: selectedDoctor.id,
-          slot_id: selectedSlotId
+
+        const isLoaded = await loadRazorpay();
+        if (!isLoaded) {
+          alert("Failed to load secure payment gateway. Check your connection.");
+          setIsBooking(false);
+          return;
+        }
+
+        // Initialize Order from backend
+        const orderRes = await fetch("/api/payments/create-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            appointment_id: data.appointment_id,
+            patient_id: patientId,
+            doctor_id: data.doctor_id || selectedDoctor.id
+          })
+        });
+
+        let orderData;
+        try {
+          orderData = await orderRes.json();
+        } catch (err) {
+          console.error("Failed to parse create-order response:", err);
+          alert(`Backend payment initialization failed. Endpoint /api/payments/create-order might not exist or returned 500 error. Status: ${orderRes.status}`);
+          setIsBooking(false);
+          return;
+        }
+
+        if (!orderRes.ok) {
+          alert(orderData.error ?? "Failed to initialize payment gateway.");
+          setIsBooking(false);
+          return;
+        }
+
+        const options = {
+          key: orderData.key,
+          amount: orderData.amount,
+          currency: orderData.currency,
+          name: "Telemedicine Platform",
+          description: `Appointment Consultation Fee`,
+          order_id: orderData.order_id,
+          handler: async function (response: any) {
+            try {
+              // Verify transaction
+              const verifyRes = await fetch("/api/payments/verify", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_signature: response.razorpay_signature,
+                  appointment_id: data.appointment_id,
+                  patient_id: patientId
+                })
+              });
+
+              if (verifyRes.ok) {
+                // Success: Emit real-time triggers and redirect to confirmation
+                socketService.emit('appointment_booked', { doctor_id: selectedDoctor.id });
+                window.dispatchEvent(new CustomEvent("appointment-booked"));
+
+                navigate("/booking-confirmation", {
+                  state: {
+                    appointment_id: data.appointment_id,
+                    doctor_id: data.doctor_id,
+                    doctor_name: data.doctor_name,
+                    specialization: data.specialization,
+                    doctor_image: data.doctor_image,
+                    date: data.date,
+                    time: data.time,
+                  },
+                });
+              } else {
+                alert("Payment verification failed at server securely.");
+              }
+            } catch {
+              alert("Network error during payment verification.");
+            }
+          },
+          prefill: {
+            name: "Patient Booking",
+            contact: "9999999999",
+            email: "patient@example.com"
+          },
+          theme: {
+            color: "#2563eb"
+          }
+        };
+
+        const rzp = new (window as any).Razorpay(options);
+        rzp.on('payment.failed', function (response: any) {
+          alert(`Payment Failed. Reason: ${response.error.description}`);
+        });
+        rzp.open();
+        setIsBooking(false);
+
+      } else {
+        // Fallback for non-payment flow
+        socketService.emit('appointment_booked', { doctor_id: selectedDoctor.id });
+        window.dispatchEvent(new CustomEvent("appointment-booked"));
+        navigate("/booking-confirmation", {
+          state: {
+            appointment_id: data.appointment_id,
+            doctor_id: data.doctor_id,
+            doctor_name: data.doctor_name,
+            specialization: data.specialization,
+            doctor_image: data.doctor_image,
+            date: data.date,
+            time: data.time,
+          },
         });
       }
 
-      alert('Appointment booked successfully!');
-      navigate('/booking-confirmation', { 
-        state: { 
-          appointment_id: response.appointment_id,
-          doctor: selectedDoctor,
-          date: selectedDate,
-          time: selectedTime
-        } 
-      });
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Booking failed');
-    } finally {
-      setIsLoading(false);
+    } catch (error: any) {
+      console.error("Connection caught error:", error);
+      alert(`Connection error: ${error.message || 'Unknown error'}. Check console for details.`);
+      setIsBooking(false);
     }
   };
 
-  // Calendar logic
-  const daysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
-  const firstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
-
-  const getCalendarDays = () => {
-    const year = currentMonth.getFullYear();
-    const month = currentMonth.getMonth();
-    const days = [];
-    const firstDay = firstDayOfMonth(year, month);
-    const totalDays = daysInMonth(year, month);
-
-    for (let i = 0; i < firstDay; i++) {
-      days.push(null);
-    }
-    for (let i = 1; i <= totalDays; i++) {
-      days.push(i);
-    }
-    return days;
-  };
-
-  // 1. FIX CALENDAR DATE SELECTION
-  const isPastDate = (day: number) => {
-    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return date < today; // 1. date < currentDate disables selection
-  };
-
-  const handleDateSelect = (day: number) => {
-    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    const dateString = date.toISOString().split('T')[0];
-    setSelectedDate(dateString);
-    setSelectedTime(null);
-    setSelectedSlotId(null);
-    // 2. Load available slots is handled by useEffect listening to selectedDate in standard patterns, 
-    // but here we just need to ensure the UI filters. fetchAvailability is triggered by step 3.
-  };
-
-  const changeMonth = (offset: number) => {
-    const newMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + offset, 1);
-    setCurrentMonth(newMonth);
-  };
+  // Extract unique dates from slots for availability dots in calendar
+  const uniqueDates = Array.from(new Set(
+    slots.filter(s => {
+      const isAvailable = (s.status === "Available" || s.status === "available" || s.status == null)
+        && s.status !== "Booked" && s.status !== "booked"
+        && !s.is_booked;
+      return isAvailable;
+    }).map(s => s.date)
+  )).sort();
 
   return (
     <ScreenContainer
-      title={
-        step === 1 ? 'Select Doctor' :
-        step === 2 ? 'Doctor Profile' :
-        'Select Time'
-      }
+      title={step === 1 ? 'Select Doctor' : step === 2 ? 'Doctor Profile' : 'Select Time'}
       showBack
-      onBack={() => {
-        if (step === 1) {
-          const dashboardPath = 
-            role === 'doctor' ? '/doctor-dashboard' :
-            role === 'admin' ? '/admin-dashboard' :
-            '/patient-dashboard';
-          navigate(dashboardPath);
-        } else {
-          setStep(prev => Math.max(1, prev - 1));
-        }
+      onBackClick={() => {
+        if (step === 3) setStep(2);
+        else if (step === 2) setStep(1);
+        else navigate(-1);
       }}
-      className="bg-surface"
-    >
+      className="bg-surface">
+
       <div className="px-6 py-4 pb-8">
         {step === 1 && (
           <div className="space-y-4 animate-fade-in">
-            <p className="text-text-secondary mb-2">
-              Available specialists near you
-            </p>
-            {isLoading ? (
-              <div className="flex justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-              </div>
-            ) : doctors.length > 0 ? (
-              doctors.map((doc) => (
-                <DoctorCard
-                  key={doc.id}
-                  {...doc}
-                  onBook={() => handleDoctorSelect(doc)}
-                />
-              ))
+            <p className="text-text-secondary mb-2">Available specialists near you</p>
+            {isLoadingDoctors ? (
+              <p className="text-center text-gray-500 py-10">Loading doctors...</p>
+            ) : doctors.length === 0 ? (
+              <p className="text-center text-gray-500 py-10">No doctors available right now.</p>
             ) : (
-              <div className="text-center py-12 bg-white rounded-2xl border-2 border-dashed border-gray-100">
-                <p className="text-text-secondary">No doctors available</p>
-              </div>
+              doctors.map((doc) => (
+                <DoctorCard key={doc.id} {...doc} location={doc.location} onBook={() => handleDoctorSelect(doc)} />
+              ))
             )}
           </div>
         )}
@@ -239,55 +440,42 @@ export function AppointmentBooking() {
         {step === 2 && selectedDoctor && (
           <div className="space-y-6 animate-fade-in">
             <div className="flex flex-col items-center text-center">
-              <div className="relative mb-4">
+              {selectedDoctor.image ? (
                 <img
-                  src={`http://localhost:5000/uploads/doctors/${selectedDoctor.id}.jpg`}
-                  onError={(e: any) => {
-                    e.target.onerror = null;
-                    e.target.src = 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=300&h=300';
-                  }}
+                  src={selectedDoctor.image.startsWith('/api/') || selectedDoctor.image.startsWith('http') ? selectedDoctor.image : `/api/profile/image/file/${selectedDoctor.image}`}
                   alt={selectedDoctor.name}
-                  className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-md"
+                  className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-md mb-4 bg-gray-200"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                 />
-              </div>
-              <h2 className="text-xl font-bold text-text-primary">
-                {selectedDoctor.name}
-              </h2>
-              <p className="text-primary font-medium">
-                {selectedDoctor.specialization}
-              </p>
+              ) : (
+                <div className="w-24 h-24 rounded-full border-4 border-white shadow-md mb-4 bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-4xl">
+                  {selectedDoctor.name?.[0] ?? "D"}
+                </div>
+              )}
+              <h2 className="text-xl font-bold text-text-primary">{selectedDoctor.name}</h2>
+              <p className="text-primary font-medium">{selectedDoctor.specialty}</p>
 
               <div className="flex items-center gap-1 mt-2">
                 <Star size={16} className="fill-yellow-400 text-yellow-400" />
-                <span className="font-bold text-text-primary">
-                  {selectedDoctor.rating || '4.5'}
-                </span>
-                <span className="text-text-secondary">
-                  ({selectedDoctor.reviews || '50'} reviews)
-                </span>
+                <span className="font-bold text-text-primary">{selectedDoctor.reviews === 0 ? "0.0" : selectedDoctor.rating}</span>
+                <span className="text-text-secondary">({selectedDoctor.reviews} reviews)</span>
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
               <Card className="flex flex-col items-center justify-center p-3 gap-1 bg-blue-50 border-blue-100">
                 <Award size={20} className="text-primary" />
-                <span className="font-bold text-text-primary text-sm whitespace-nowrap">
-                  {selectedDoctor.experience || '5+ Years'}
-                </span>
+                <span className="font-bold text-text-primary text-sm">{selectedDoctor.experience}</span>
                 <span className="text-[10px] text-text-secondary">Experience</span>
               </Card>
               <Card className="flex flex-col items-center justify-center p-3 gap-1 bg-green-50 border-green-100">
                 <DollarSign size={20} className="text-success" />
-                <span className="font-bold text-text-primary text-sm whitespace-nowrap">
-                  ${selectedDoctor.fee || '50'}
-                </span>
+                <span className="font-bold text-text-primary text-sm">{selectedDoctor.fee}</span>
                 <span className="text-[10px] text-text-secondary">Fee</span>
               </Card>
               <Card className="flex flex-col items-center justify-center p-3 gap-1 bg-purple-50 border-purple-100">
                 <Globe size={20} className="text-purple-500" />
-                <span className="font-bold text-text-primary text-sm whitespace-nowrap">
-                  {selectedDoctor.languages ? selectedDoctor.languages.split(',').length : '2'}
-                </span>
+                <span className="font-bold text-text-primary text-sm">{selectedDoctor.languages.length}</span>
                 <span className="text-[10px] text-text-secondary">Languages</span>
               </Card>
             </div>
@@ -295,126 +483,60 @@ export function AppointmentBooking() {
             <div className="space-y-2">
               <h3 className="font-bold text-text-primary">About Doctor</h3>
               <p className="text-sm text-text-secondary leading-relaxed">
-                {selectedDoctor.bio || `Dr. ${selectedDoctor.name.split(' ').pop()} is a highly experienced specialist dedicated to providing comprehensive care. Known for a patient-centric approach and accurate diagnoses.`}
+                {selectedDoctor.name} is a highly experienced specialist dedicated to providing comprehensive care. Known for a patient-centric approach and accurate diagnoses.
               </p>
             </div>
 
-            <Button fullWidth onClick={handleStartBooking} isLoading={isLoading}>
-              Book Appointment
-            </Button>
+            <Button fullWidth onClick={() => setStep(3)}>Book Appointment</Button>
           </div>
         )}
 
         {step === 3 && (
           <div className="space-y-6 animate-fade-in">
-            <DoctorCard {...selectedDoctor} compact />
+            <DoctorCard {...selectedDoctor} location={selectedDoctor.location} compact />
 
-            {/* Calendar UI */}
-            <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-text-primary flex items-center gap-2">
-                  <CalendarIcon size={18} className="text-primary" />
-                  {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
-                </h3>
-                <div className="flex gap-2">
-                  <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
-                    <ChevronLeft size={20} />
-                  </button>
-                  <button onClick={() => changeMonth(1)} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
-                    <ChevronRight size={20} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
-                  <span key={d} className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{d}</span>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-7 gap-1">
-                {getCalendarDays().map((day, idx) => {
-                  if (day === null) return <div key={`empty-${idx}`} />;
-                  const isSelected = selectedDate === new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day).toISOString().split('T')[0];
-                  const past = isPastDate(day);
-                  
-                  return (
-                    <button
-                      key={day}
-                      disabled={past} // 1. Only disable past dates
-                      onClick={() => handleDateSelect(day)}
-                      className={`
-                        h-9 w-9 rounded-full flex items-center justify-center text-sm font-medium transition-all
-                        ${isSelected ? 'bg-primary text-white shadow-lg shadow-primary/25 scale-110' : 'text-text-primary hover:bg-primary/5'}
-                        ${past ? 'text-gray-200 pointer-events-none' : ''}
-                      `}
-                    >
-                      {day}
-                    </button>
-                  );
-                })}
-              </div>
+            <div>
+              <h3 className="font-bold text-text-primary mb-3">Select Date</h3>
+              <DatePicker
+                selectedDate={selectedDate}
+                onSelect={(date: string) => { setSelectedDate(date); setSelectedSlot(null); }}
+                availableDates={uniqueDates}
+              />
             </div>
 
-            {/* Time Slots Grid */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-text-primary">Available Slots</h3>
-                <span className="text-xs text-text-secondary flex items-center gap-1">
-                  <Clock size={12} />
-                  {selectedDate}
-                </span>
-              </div>
-
-              {/* 2. LOAD SLOTS BASED ON SELECTED DATE & 3. FIX SLOT SELECTION STATE */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {availableSlots
-                  .filter(slot => slot.date === selectedDate) // 2. Filter locally by selectedDate
-                  .map((slot) => {
-                  const isBooked = slot.is_booked;
-                  const isSelected = selectedSlotId === (slot.id || slot.availability_id);
-
-                  return (
-                    <button
-                      key={slot.id || slot.availability_id}
-                      onClick={() => {
-                        if (isBooked) {
-                            // 3. Show popup for booked slot
-                            alert("This slot is already booked.");
-                            return;
-                        }
-                        setSelectedSlotId(slot.id || slot.availability_id);
-                        setSelectedTime(slot.time_slot);
-                      }}
-                      className={`
-                        relative py-3 px-2 rounded-xl border-2 font-bold text-sm transition-all overflow-hidden
-                        ${isBooked ? 'bg-gray-100 border-gray-100 text-gray-400 cursor-not-allowed opacity-60' : 
-                          isSelected ? 'border-primary bg-primary text-white shadow-md' : 
-                          'border-gray-50 bg-white text-gray-600 hover:border-primary/20'}
-                      `}
-                    >
-                      <div className="flex items-center justify-center gap-1">
-                        {isBooked && <Lock size={12} />}
-                        {slot.time_slot}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-              {/* 2. No slots message */}
-              {availableSlots.filter(s => s.date === selectedDate).length === 0 && (
-                <div className="text-center py-6 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-100">
-                  <p className="text-text-secondary text-sm">No available slots for this date.</p>
+            <div>
+              <h3 className="font-bold text-text-primary mb-3">Available Slots</h3>
+              {filteredSlots.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  {selectedDate ? 'No availability slots found for this date.' : 'Pick a date to see available slots.'}
+                </p>
+              ) : (
+                <div className="grid grid-cols-3 gap-3">
+                  {filteredSlots.map((slot: any) => {
+                    // Extract HH:mm from "HH:mm:ss" or "HH:mm" slot backend string
+                    const timeDisp = String(slot.time_slot).slice(0, 5);
+                    const isSelected = selectedSlot?.id === slot.id;
+                    return (
+                      <button
+                        key={slot.id}
+                        onClick={() => setSelectedSlot(slot)}
+                        className={`py-2 px-1 rounded-lg text-sm font-medium border transition-all ${isSelected ? 'border-primary bg-primary text-white shadow-md' : 'border-gray-200 bg-white text-text-primary hover:border-primary/50'
+                          }`}
+                      >
+                        {timeDisp}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
 
             <Button
               fullWidth
-              disabled={!selectedTime}
-              isLoading={isLoading}
+              disabled={!selectedSlot || isBooking}
+              isLoading={isBooking}
               onClick={handleConfirmBooking}
-              className="mt-4 shadow-xl shadow-primary/20"
+              className="mt-4"
             >
               Confirm Booking
             </Button>

@@ -1,7 +1,34 @@
 import React from 'react';
 import { Activity, Shield, Heart, Globe } from 'lucide-react';
 import { ScreenContainer } from '../components/layout/ScreenContainer';
+import { useProfile } from '../context/ProfileContext';
+
 export function AboutAppScreen() {
+  const { profile } = useProfile();
+  const role = profile?.role || 'patient';
+
+  const getRoleSpecificContent = () => {
+    switch (role) {
+      case 'doctor':
+        return {
+          title: "Provider-Focused Efficiency",
+          desc: "Streamlined tools to manage your appointments, patient records, and digital prescriptions effortlessly."
+        };
+      case 'admin':
+        return {
+          title: "System Integrity & Oversight",
+          desc: "Comprehensive dashboards for user verification, platform monitoring, and system-wide security auditing."
+        };
+      default:
+        return {
+          title: "Patient-Centered Experience",
+          desc: "Designed to simplify appointments, consultations, records, and follow-ups."
+        };
+    }
+  };
+
+  const roleContent = getRoleSpecificContent();
+
   return (
     <ScreenContainer title="About" showBack>
       <div className="px-6 py-8 flex flex-col items-center text-center">
@@ -13,7 +40,7 @@ export function AboutAppScreen() {
           TeleHealth+
         </h1>
         <p className="text-text-secondary text-sm mb-8">
-          Version 1.0.0 (Build 2023.10.24)
+          Version 1.0.0
         </p>
 
         <div className="w-full space-y-6 text-left">
@@ -26,8 +53,7 @@ export function AboutAppScreen() {
                 Accessible Healthcare
               </h3>
               <p className="text-sm text-text-secondary mt-1">
-                Connect with top doctors from anywhere in the world, anytime you
-                need.
+                Connect with trusted healthcare services anytime, anywhere.
               </p>
             </div>
           </div>
@@ -39,8 +65,7 @@ export function AboutAppScreen() {
             <div>
               <h3 className="font-bold text-text-primary">Secure & Private</h3>
               <p className="text-sm text-text-secondary mt-1">
-                Your health data is encrypted and protected with
-                enterprise-grade security.
+                Your data, consultations, and records are protected with secure access controls.
               </p>
             </div>
           </div>
@@ -50,10 +75,9 @@ export function AboutAppScreen() {
               <Heart size={20} />
             </div>
             <div>
-              <h3 className="font-bold text-text-primary">Patient First</h3>
+              <h3 className="font-bold text-text-primary">{roleContent.title}</h3>
               <p className="text-sm text-text-secondary mt-1">
-                Designed with care to provide the best possible healthcare
-                experience.
+                {roleContent.desc}
               </p>
             </div>
           </div>
@@ -64,10 +88,10 @@ export function AboutAppScreen() {
             Terms of Service
           </button>
           <div className="text-xs text-gray-400">
-            © 2023 TeleHealth Inc. All rights reserved.
+            © 2026 TeleHealth+ Inc. All rights reserved.
           </div>
         </div>
       </div>
-    </ScreenContainer>);
-
+    </ScreenContainer>
+  );
 }

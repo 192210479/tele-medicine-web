@@ -1,14 +1,17 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
-import { ThemeProvider } from './context/ThemeContext';
-import { NotificationProvider } from './context/NotificationContext';
+import { ProfileProvider } from './context/ProfileContext';
+import { LocalNotificationProvider } from './context/LocalNotificationProvider';
 import { WebLayout } from './components/layout/WebLayout';
 // Screens
 import { SplashScreen } from './pages/SplashScreen';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import { OnboardingScreen } from './pages/OnboardingScreen';
 import { GetStartedScreen } from './pages/GetStartedScreen';
 import { LoginScreen } from './pages/LoginScreen';
 import { RegistrationScreen } from './pages/RegistrationScreen';
+import { ForgotPasswordScreen } from './pages/ForgotPasswordScreen';
+import { VerifyOtpScreen } from './pages/VerifyOtpScreen';
 import { ResetPasswordScreen } from './pages/ResetPasswordScreen';
 import { PatientDashboard } from './pages/PatientDashboard';
 import { DoctorDashboard } from './pages/DoctorDashboard';
@@ -17,8 +20,10 @@ import { AppointmentBooking } from './pages/AppointmentBooking';
 import { BookingConfirmation } from './pages/BookingConfirmation';
 import { HistoryScreen } from './pages/HistoryScreen';
 import { PrescriptionScreen } from './pages/PrescriptionScreen';
-import { PatientPrescriptionsScreen } from './pages/PatientPrescriptionsScreen';
 import { ProfileScreen } from './pages/ProfileScreen';
+import { DoctorHistoryScreen } from './pages/DoctorHistoryScreen';
+import { PatientConsultationFlow } from './pages/PatientConsultationFlow';
+import { DoctorConsultationFlow } from './pages/DoctorConsultationFlow';
 // Patient Flow
 import { UpcomingAppointmentsScreen } from './pages/UpcomingAppointmentsScreen';
 import { PatientWaitingRoomScreen } from './pages/PatientWaitingRoomScreen';
@@ -26,7 +31,9 @@ import { PatientVideoCallScreen } from './pages/PatientVideoCallScreen';
 import { PatientWaitingForPrescriptionScreen } from './pages/PatientWaitingForPrescriptionScreen';
 // Doctor Flow
 import { DoctorVideoCallScreen } from './pages/DoctorVideoCallScreen';
-import { DoctorPrescriptionCreationScreen } from './pages/DoctorPrescriptionCreationScreen';
+import { DoctorSlotAvailabilityScreen } from './pages/DoctorSlotAvailabilityScreen';
+import { DoctorReviewReportsScreen } from './pages/DoctorReviewReportsScreen';
+import { DoctorTodayAppointmentsScreen } from './pages/DoctorTodayAppointmentsScreen';
 // Other Screens
 import { MissedAppointmentScreen } from './pages/MissedAppointmentScreen';
 import { PatientDetailsScreen } from './pages/PatientDetailsScreen';
@@ -52,13 +59,27 @@ import { PaymentsBillingScreen } from './pages/PaymentsBillingScreen';
 import { EmergencyHelpScreen } from './pages/EmergencyHelpScreen';
 import { DoctorApprovalScreen } from './pages/DoctorApprovalScreen';
 import { RateDoctorScreen } from './pages/RateDoctorScreen';
-import { DoctorAvailabilityScreen } from './pages/DoctorAvailabilityScreen';
+import PatientRegisterScreen from './pages/PatientRegisterScreen';
+import DoctorRegisterScreen from './pages/DoctorRegisterScreen';
+import PendingDoctorsScreen from './pages/admin/PendingDoctorsScreen';
+import VideoRoomScreen from './pages/VideoRoomScreen';
+import PrescriptionWaitingScreen from './pages/PrescriptionWaitingScreen';
+import CreatePrescriptionScreen from './pages/CreatePrescriptionScreen';
+import PrescriptionViewScreen from './pages/PrescriptionViewScreen';
+import PrescriptionDoneScreen from './pages/PrescriptionDoneScreen';
+import PrescriptionReadyScreen from './pages/PrescriptionReadyScreen';
+import { PatientPrescriptionsScreen } from './pages/PatientPrescriptionsScreen';
+import { AppointmentDetailScreen } from './pages/AppointmentDetailScreen';
+import { TermsAndConditionsScreen } from './pages/TermsAndConditionsScreen';
+import { PrivacyPolicyScreen } from './pages/PrivacyPolicyScreen';
+import { PremiumPrescriptionView } from './pages/PremiumPrescriptionView';
+
 
 export function App() {
   return (
     <AuthProvider>
-      <ThemeProvider>
-        <NotificationProvider>
+      <ProfileProvider>
+        <LocalNotificationProvider>
           <HashRouter>
             <WebLayout>
               <Routes>
@@ -70,119 +91,87 @@ export function App() {
                 {/* Auth Flow */}
                 <Route path="/login" element={<LoginScreen />} />
                 <Route path="/register" element={<RegistrationScreen />} />
+                <Route path="/register/patient" element={<PatientRegisterScreen />} />
+                <Route path="/register/doctor" element={<DoctorRegisterScreen />} />
+                <Route path="/forgot-password" element={<ForgotPasswordScreen />} />
+                <Route path="/verify-otp" element={<VerifyOtpScreen />} />
                 <Route path="/reset-password" element={<ResetPasswordScreen />} />
+                <Route path="/terms" element={<TermsAndConditionsScreen />} />
+                <Route path="/privacy" element={<PrivacyPolicyScreen />} />
 
-                {/* Dashboards */}
-                <Route path="/patient-dashboard" element={<PatientDashboard />} />
-                <Route path="/doctor-dashboard" element={<DoctorDashboard />} />
-                <Route path="/admin-dashboard" element={<AdminDashboard />} />
+                {/* Protected Dashboards */}
+                <Route path="/patient-dashboard" element={<ProtectedRoute allowedRoles={["patient"]}><PatientDashboard /></ProtectedRoute>} />
+                <Route path="/home" element={<ProtectedRoute allowedRoles={["patient"]}><PatientDashboard /></ProtectedRoute>} />
+                <Route path="/doctor-dashboard" element={<ProtectedRoute allowedRoles={["doctor"]}><DoctorDashboard /></ProtectedRoute>} />
+                <Route path="/doctor/dashboard" element={<ProtectedRoute allowedRoles={["doctor"]}><DoctorDashboard /></ProtectedRoute>} />
+                <Route path="/admin-dashboard" element={<ProtectedRoute allowedRoles={["admin"]}><AdminDashboard /></ProtectedRoute>} />
+                <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={["admin"]}><AdminDashboard /></ProtectedRoute>} />
 
                 {/* Patient Flow */}
-                <Route
-                  path="/upcoming-appointments"
-                  element={<UpcomingAppointmentsScreen />} />
-
-                <Route path="/book-appointment" element={<AppointmentBooking />} />
-                <Route
-                  path="/booking-confirmation"
-                  element={<BookingConfirmation />} />
-
-                <Route
-                  path="/patient-waiting-room"
-                  element={<PatientWaitingRoomScreen />} />
-
-                <Route
-                  path="/patient-video-call"
-                  element={<PatientVideoCallScreen />} />
-
-                <Route
-                  path="/waiting-for-prescription"
-                  element={<PatientWaitingForPrescriptionScreen />} />
-
-                <Route
-                  path="/missed-appointment"
-                  element={<MissedAppointmentScreen />} />
-
-                <Route path="/medical-records" element={<MedicalRecordsVault />} />
-                <Route path="/symptom-checker" element={<SymptomCheckerScreen />} />
-                <Route
-                  path="/medication-reminders"
-                  element={<MedicationRemindersScreen />} />
-
-                <Route
-                  path="/notifications"
-                  element={<NotificationCenterScreen />} />
-
-                <Route
-                  path="/payments-billing"
-                  element={<PaymentsBillingScreen />} />
-
-                <Route path="/emergency-help" element={<EmergencyHelpScreen />} />
-                <Route path="/rate-doctor" element={<RateDoctorScreen />} />
+                <Route path="/upcoming-appointments" element={<ProtectedRoute allowedRoles={["patient"]}><UpcomingAppointmentsScreen /></ProtectedRoute>} />
+                <Route path="/book-appointment" element={<ProtectedRoute allowedRoles={["patient"]}><AppointmentBooking /></ProtectedRoute>} />
+                <Route path="/booking-confirmation" element={<ProtectedRoute allowedRoles={["patient"]}><BookingConfirmation /></ProtectedRoute>} />
+                <Route path="/consultation/:appointmentId" element={<ProtectedRoute allowedRoles={["patient"]}><PatientConsultationFlow /></ProtectedRoute>} />
+                <Route path="/patient-waiting-room" element={<ProtectedRoute allowedRoles={["patient"]}><PatientWaitingRoomScreen /></ProtectedRoute>} />
+                <Route path="/patient-video-call" element={<ProtectedRoute allowedRoles={["patient"]}><PatientVideoCallScreen /></ProtectedRoute>} />
+                <Route path="/waiting-for-prescription" element={<ProtectedRoute allowedRoles={["patient"]}><PatientWaitingForPrescriptionScreen /></ProtectedRoute>} />
+                <Route path="/missed-appointment" element={<ProtectedRoute allowedRoles={["patient"]}><MissedAppointmentScreen /></ProtectedRoute>} />
+                <Route path="/medical-records" element={<ProtectedRoute allowedRoles={["patient"]}><MedicalRecordsVault /></ProtectedRoute>} />
+                <Route path="/symptom-checker" element={<ProtectedRoute allowedRoles={["patient"]}><SymptomCheckerScreen /></ProtectedRoute>} />
+                <Route path="/medication-reminders" element={<ProtectedRoute allowedRoles={["patient"]}>< MedicationRemindersScreen /></ProtectedRoute>} />
+                <Route path="/notifications" element={<ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}><NotificationCenterScreen /></ProtectedRoute>} />
+                <Route path="/payments-billing" element={<ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}><PaymentsBillingScreen /></ProtectedRoute>} />
+                <Route path="/emergency-help" element={<ProtectedRoute allowedRoles={["patient"]}><EmergencyHelpScreen /></ProtectedRoute>} />
+                <Route path="/rate-doctor" element={<ProtectedRoute allowedRoles={["patient"]}><RateDoctorScreen /></ProtectedRoute>} />
 
                 {/* Doctor Flow */}
-                <Route path="/patient-details" element={<PatientDetailsScreen />} />
-                <Route
-                  path="/doctor-video-call"
-                  element={<DoctorVideoCallScreen />} />
-
-                <Route
-                  path="/doctor-prescription-creation"
-                  element={<DoctorPrescriptionCreationScreen />} />
-
-                <Route
-                  path="/doctor-appointments"
-                  element={<DoctorAppointmentsScreen />} />
-
-                <Route
-                  path="/doctor-availability"
-                  element={<DoctorAvailabilityScreen />} />
-
+                <Route path="/patient-details" element={<ProtectedRoute allowedRoles={["doctor"]}><PatientDetailsScreen /></ProtectedRoute>} />
+                <Route path="/doctor-consultation/:appointmentId" element={<ProtectedRoute allowedRoles={["doctor"]}><DoctorConsultationFlow /></ProtectedRoute>} />
+                <Route path="/doctor-video-call" element={<ProtectedRoute allowedRoles={["doctor"]}><DoctorVideoCallScreen /></ProtectedRoute>} />
+                <Route path="/doctor-slot-availability" element={<ProtectedRoute allowedRoles={["doctor"]}><DoctorSlotAvailabilityScreen /></ProtectedRoute>} />
+                <Route path="/doctor-appointments" element={<ProtectedRoute allowedRoles={["doctor"]}><DoctorAppointmentsScreen /></ProtectedRoute>} />
+                <Route path="/doctor-review-reports" element={<ProtectedRoute allowedRoles={["doctor"]}><DoctorReviewReportsScreen /></ProtectedRoute>} />
+                <Route path="/doctor-today-appointments" element={<ProtectedRoute allowedRoles={["doctor"]}><DoctorTodayAppointmentsScreen /></ProtectedRoute>} />
 
                 {/* Admin Flow */}
-                <Route
-                  path="/admin-appointments"
-                  element={<AdminAppointmentsScreen />} />
-
-                <Route
-                  path="/doctor-approvals"
-                  element={<DoctorApprovalScreen />} />
-
+                <Route path="/admin-appointments" element={<ProtectedRoute allowedRoles={["admin"]}><AdminAppointmentsScreen /></ProtectedRoute>} />
+                <Route path="/doctor-approvals" element={<ProtectedRoute allowedRoles={["admin"]}><DoctorApprovalScreen /></ProtectedRoute>} />
+                <Route path="/admin/doctors/approvals" element={<ProtectedRoute allowedRoles={["admin"]}><PendingDoctorsScreen /></ProtectedRoute>} />
 
                 {/* Common */}
-                <Route path="/session-summary" element={<SessionSummaryScreen />} />
-                <Route path="/history" element={<HistoryScreen />} />
-                <Route path="/patient-prescriptions" element={<PatientPrescriptionsScreen />} />
-                <Route path="/prescription/:id" element={<PrescriptionScreen />} />
+                <Route path="/consultation/video" element={<ProtectedRoute allowedRoles={["patient", "doctor"]}><VideoRoomScreen /></ProtectedRoute>} />
+                <Route path="/prescription/create" element={<ProtectedRoute allowedRoles={["doctor"]}><CreatePrescriptionScreen /></ProtectedRoute>} />
+                <Route path="/consultation/prescription-waiting" element={<ProtectedRoute allowedRoles={["patient"]}><PrescriptionWaitingScreen /></ProtectedRoute>} />
+                <Route path="/consultation/prescription-ready" element={<ProtectedRoute allowedRoles={["patient"]}><PrescriptionReadyScreen /></ProtectedRoute>} />
+                <Route path="/consultation/prescription-view" element={<ProtectedRoute allowedRoles={["patient"]}><PrescriptionViewScreen /></ProtectedRoute>} />
+                <Route path="/consultation/prescription-done" element={<ProtectedRoute allowedRoles={["doctor"]}><PrescriptionDoneScreen /></ProtectedRoute>} />
+                <Route path="/session-summary" element={<ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}><SessionSummaryScreen /></ProtectedRoute>} />
+                <Route path="/history" element={<ProtectedRoute allowedRoles={["patient"]}><HistoryScreen /></ProtectedRoute>} />
+                <Route path="/prescriptions" element={<ProtectedRoute allowedRoles={["patient"]}><PatientPrescriptionsScreen /></ProtectedRoute>} />
+                <Route path="/prescription/view/:id" element={<ProtectedRoute allowedRoles={["patient"]}><PremiumPrescriptionView /></ProtectedRoute>} />
+                <Route path="/doctor-history" element={<ProtectedRoute allowedRoles={["doctor"]}><DoctorHistoryScreen /></ProtectedRoute>} />
+                <Route path="/prescription/:id" element={<ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}><PrescriptionScreen /></ProtectedRoute>} />
+                <Route path="/appointment/:id" element={<ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}><AppointmentDetailScreen /></ProtectedRoute>} />
 
                 {/* Profile & Settings */}
-                <Route path="/profile" element={<ProfileScreen />} />
-                <Route path="/edit-profile" element={<EditProfileScreen />} />
-                <Route
-                  path="/privacy-security"
-                  element={<PrivacySecurityScreen />} />
-
-                <Route path="/change-password" element={<ChangePasswordScreen />} />
-                <Route path="/login-activity" element={<LoginActivityScreen />} />
-                <Route
-                  path="/device-management"
-                  element={<DeviceManagementScreen />} />
-
-                <Route path="/data-policy" element={<DataPolicyScreen />} />
-                <Route path="/delete-account" element={<DeleteAccountScreen />} />
-                <Route
-                  path="/notification-settings"
-                  element={<NotificationSettingsScreen />} />
-
-                <Route path="/help-support" element={<HelpSupportScreen />} />
-                <Route path="/about" element={<AboutAppScreen />} />
+                <Route path="/profile" element={<ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}><ProfileScreen /></ProtectedRoute>} />
+                <Route path="/edit-profile" element={<ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}><EditProfileScreen /></ProtectedRoute>} />
+                <Route path="/privacy-security" element={<ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}><PrivacySecurityScreen /></ProtectedRoute>} />
+                <Route path="/change-password" element={<ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}><ChangePasswordScreen /></ProtectedRoute>} />
+                <Route path="/login-activity" element={<ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}><LoginActivityScreen /></ProtectedRoute>} />
+                <Route path="/device-management" element={<ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}><DeviceManagementScreen /></ProtectedRoute>} />
+                <Route path="/data-policy" element={<ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}><DataPolicyScreen /></ProtectedRoute>} />
+                <Route path="/delete-account" element={<ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}><DeleteAccountScreen /></ProtectedRoute>} />
+                <Route path="/notification-settings" element={<ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}><NotificationSettingsScreen /></ProtectedRoute>} />
+                <Route path="/help-support" element={<ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}><HelpSupportScreen /></ProtectedRoute>} />
+                <Route path="/about" element={<ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}><AboutAppScreen /></ProtectedRoute>} />
 
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </WebLayout>
           </HashRouter>
-        </NotificationProvider>
-      </ThemeProvider>
+        </LocalNotificationProvider>
+      </ProfileProvider>
     </AuthProvider>
   );
 }

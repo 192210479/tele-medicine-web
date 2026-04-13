@@ -1,9 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
-  './index.html',
-  './src/**/*.{js,ts,jsx,tsx}'
-],
+    './index.html',
+    './src/**/*.{js,ts,jsx,tsx}'
+  ],
   theme: {
     extend: {
       colors: {
@@ -20,6 +20,7 @@ export default {
         success: '#43A047', // Green
         warning: '#FB8C00', // Orange
         surface: '#F5F7FA', // Light Gray
+        background: '#F5F7FA',
         text: {
           primary: '#212121',
           secondary: '#757575',

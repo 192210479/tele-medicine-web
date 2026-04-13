@@ -20,7 +20,7 @@ export function EmptyState({
       <MedicalIllustration
         type={illustrationType}
         className="w-48 h-48 mb-6 opacity-80" />
-
+      
 
       <h3 className="text-xl font-bold text-text-primary mb-2">{title}</h3>
 

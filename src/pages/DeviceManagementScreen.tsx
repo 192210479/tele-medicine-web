@@ -1,102 +1,125 @@
-import { useState, useEffect } from 'react';
-import { Smartphone, Laptop, Tablet, Trash2 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { ScreenContainer } from '../components/layout/ScreenContainer';
 import { Card } from '../components/ui/Card';
-import { useAuth } from '../context/AuthContext';
+import { Monitor, Smartphone, Trash2, ShieldCheck, HelpCircle } from 'lucide-react';
+
+type DeviceItem = {
+  id:          number;
+  device_name: string;
+  ip_address:  string;
+  last_login:  string;
+};
 
 export function DeviceManagementScreen() {
-  const { userId, role } = useAuth();
-  const [devices, setDevices] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { userId: authUserId, role: authRole } = useAuth();
+  const userId = authUserId ?? Number(localStorage.getItem("user_id"));
+  const role   = authRole   ?? localStorage.getItem("role") ?? "";
 
-  useEffect(() => {
-    if (userId && role) {
-      fetchDevices();
+  const [devices, setDevices] = useState<DeviceItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchDevices = useCallback(async () => {
+    if (!userId || !role) return;
+    try {
+      const res = await fetch(`/api/devices?user_id=${userId}&role=${role}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDevices(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch devices", err);
+    } finally {
+      setLoading(false);
     }
   }, [userId, role]);
 
-  const fetchDevices = async () => {
-    try {
-      const response = await fetch(`http://localhost:5000/api/devices?user_id=${userId}&role=${role}`);
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        setDevices(data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch devices:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  useEffect(() => {
+    fetchDevices();
+  }, [fetchDevices]);
 
-  const handleDeleteDevice = async (deviceId: number) => {
-    if (!window.confirm("Are you sure you want to remove this device?")) return;
-    
+  const handleRemove = async (deviceId: number) => {
+    if (!window.confirm("Remove this device from your account? This will log out of that device immediately.")) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/device/delete/${deviceId}`, {
+      const res = await fetch(`/api/device/delete/${deviceId}`, {
         method: "DELETE"
       });
-
-      if (response.ok) {
-        alert("Device removed successfully");
-        fetchDevices();
-      } else {
-        alert("Failed to remove device");
+      if (res.ok) {
+        setDevices(prev => prev.filter(d => d.id !== deviceId));
       }
-    } catch (error) {
-      console.error('Delete device failed:', error);
+    } catch (err) {
+        console.error("Delete device fail", err);
     }
   };
 
-  const getIcon = (name: string) => {
-    const lowerName = name.toLowerCase();
-    if (lowerName.includes('laptop') || lowerName.includes('macbook') || lowerName.includes('windows')) {
-      return <Laptop size={20} />;
-    }
-    if (lowerName.includes('tablet') || lowerName.includes('ipad')) {
-      return <Tablet size={20} />;
-    }
-    return <Smartphone size={20} />;
+  const fmtDate = (raw: string): string => {
+    const d = new Date(raw);
+    return d.toLocaleDateString("en-US", {
+      month: "short", day: "2-digit", year: "numeric"
+    });
   };
 
   return (
-    <ScreenContainer title="Device Management" showBack>
-      <div className="px-6 py-6 space-y-4">
-        {isLoading ? (
-          <div className="text-center py-10 text-gray-400 italic">Loading devices...</div>
-        ) : devices.length > 0 ? (
-          devices.map((device) => (
-            <Card key={device.id} className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-primary">
-                  {getIcon(device.device_name)}
+    <ScreenContainer title="Device Management" showBack className="bg-gray-50 pb-8">
+      <div className="p-6 max-w-2xl mx-auto space-y-6">
+        
+        <header className="mb-8">
+          <h2 className="text-2xl font-bold text-text-primary">Authenticated Devices</h2>
+          <p className="text-text-secondary text-sm">Devices which have recently accessed your TeleHealth+ profile</p>
+        </header>
+
+        {loading ? (
+             <div className="flex flex-col items-center justify-center py-20 space-y-4">
+                <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-text-secondary font-medium">Scanning network access...</p>
+             </div>
+        ) : devices.length === 0 ? (
+          <Card className="text-center py-20 bg-white border-none shadow-soft">
+            <HelpCircle size={48} className="mx-auto text-gray-200 mb-4" />
+            <p className="text-text-secondary font-bold">No active devices found.</p>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {devices.map(device => (
+              <Card key={device.id} className="bg-white rounded-2xl border-none shadow-soft p-5 flex items-center gap-5 translate-all hover:shadow-md">
+                <div className="w-14 h-14 rounded-2xl bg-blue-50/50 flex items-center justify-center text-blue-600 shadow-inner group">
+                   {device.device_name.toLowerCase().includes('desktop') || device.device_name.toLowerCase().includes('laptop') || device.device_name.toLowerCase().includes('mac') || device.device_name.toLowerCase().includes('win') ? (
+                       <Monitor size={24} strokeWidth={2.5} className="group-hover:scale-110 transition-transform" />
+                   ) : (
+                       <Smartphone size={24} strokeWidth={2.5} className="group-hover:scale-110 transition-transform" />
+                   )}
                 </div>
-                <div>
-                  <h4 className="font-bold text-text-primary">{device.device_name}</h4>
-                  <p className="text-xs text-text-secondary">
-                    {device.ip_address} • {device.last_login}
+                <div className="flex-1 space-y-1">
+                  <p className="font-bold text-text-primary text-base">{device.device_name}</p>
+                  <p className="text-text-secondary text-xs font-bold leading-none">
+                    {device.ip_address} <span className="text-gray-200 mx-2">|</span> {fmtDate(device.last_login)}
                   </p>
                 </div>
-              </div>
-              <button 
-                onClick={() => handleDeleteDevice(device.id)}
-                className="p-2 text-gray-400 hover:text-red-500 transition-colors"
-              >
-                <Trash2 size={18} />
-              </button>
-            </Card>
-          ))
-        ) : (
-          <div className="text-center py-10 text-gray-400 italic">No devices managed.</div>
+                <button
+                  onClick={() => handleRemove(device.id)}
+                  className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-all active:scale-[0.95] group"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </Card>
+            ))}
+          </div>
         )}
 
-        <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mt-6">
-          <h4 className="font-bold text-primary text-sm mb-1">Security Tip</h4>
-          <p className="text-xs text-blue-800">
-            If you don't recognize a device, remove it immediately and change
-            your password to secure your account.
-          </p>
-        </div>
+        <footer className="pt-6">
+          <div className="bg-primary/5 rounded-3xl p-6 border border-primary/10 flex items-start gap-5">
+            <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center text-white shadow-lg shadow-primary/20 flex-shrink-0">
+               <ShieldCheck size={24} strokeWidth={2.5} />
+            </div>
+            <div>
+              <p className="text-primary font-black text-xs uppercase tracking-[0.1em] mb-1">Security Recommendation</p>
+              <p className="text-text-primary text-sm font-bold leading-relaxed">
+                If you don't recognize a device listed here, remove it immediately and secure your account by changing your login password.
+              </p>
+            </div>
+          </div>
+        </footer>
+
       </div>
     </ScreenContainer>
   );

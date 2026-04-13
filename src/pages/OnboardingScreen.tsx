@@ -55,7 +55,7 @@ export function OnboardingScreen() {
           <button
             onClick={handleSkip}
             className="text-base font-medium text-gray-400 hover:text-gray-600 transition-colors">
-
+            
               Skip
             </button>
           }
@@ -69,18 +69,18 @@ export function OnboardingScreen() {
             <div className="absolute inset-0 flex items-center justify-center">
               <div
                 className={`w-64 h-64 rounded-full ${step.iconBg} opacity-30 animate-pulse`} />
-
+              
             </div>
             <div className="absolute inset-0 flex items-center justify-center">
               <div
                 className={`w-48 h-48 rounded-full ${step.iconBg} opacity-50`} />
-
+              
             </div>
 
             {/* Main icon */}
             <div
               className={`relative w-36 h-36 rounded-3xl ${step.iconBg} flex items-center justify-center shadow-lg`}>
-
+              
               <IconComponent size={72} className={step.iconColor} />
             </div>
 
@@ -122,7 +122,7 @@ export function OnboardingScreen() {
             <ArrowRight size={20} />
 
             }>
-
+            
             {currentStep === onboardingSteps.length - 1 ?
             'Get Started' :
             'Next'}

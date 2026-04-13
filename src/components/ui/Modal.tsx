@@ -46,7 +46,7 @@ export function Modal({
         </h3>
 
         {description &&
-        <p className="text-text-secondary text-sm mb-6">{description}</p>
+          <p className="text-text-secondary text-sm mb-6">{description}</p>
         }
 
         {children}
@@ -56,7 +56,7 @@ export function Modal({
             {cancelText}
           </Button>
           {onConfirm &&
-          <Button variant={variant} onClick={onConfirm} className="flex-1">
+            <Button variant={variant} onClick={onConfirm} className="flex-1">
               {confirmText}
             </Button>
           }

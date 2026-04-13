@@ -1,318 +1,303 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Calendar,
-  Clock,
-  FileText,
-  Activity,
-  ChevronRight,
-  Bell,
-  AlertTriangle,
-  FolderOpen,
-  Upload,
-  Search,
-  Headphones,
-  Pill
-} from 'lucide-react';
-import { ScreenContainer } from '../components/layout/ScreenContainer';
-import { Card } from '../components/ui/Card';
+import { Bell } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { apiGet, apiPut } from '../services/api';
-import { useNotifications } from '../context/NotificationContext';
-import { Modal } from '../components/ui/Modal';
-import { Button } from '../components/ui/Button';
+import { useProfile, useDisplayName } from '../context/ProfileContext';
+import { sortAscending, fmtTime, parseLocalDate } from '../utils/dateUtils';
+import { getSocket } from '../utils/socketUtils';
+import { aiService, dashboardService } from '../services/api';
 
+type ApptItem = {
+  id: number;
+  doctor_id: number;
+  doctor_name: string;
+  specialization: string | null;
+  doctor_image: string | null;
+  date: string;
+  time: string;
+  status: string;
+  consultation_status: string;
+};
+
+// ── SVG icon components ──────────────────────────────────────
+function IconCalendar({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z" />
+    </svg>
+  );
+}
+function IconClock({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z" />
+    </svg>
+  );
+}
+function IconPrescription({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" />
+    </svg>
+  );
+}
+function IconActivity({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M3.5 18.5l6-6 4 4L22 6.92M22 6.92V12M22 6.92H16.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </svg>
+  );
+}
+function IconFolder({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
+    </svg>
+  );
+}
+function IconBell({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z" />
+    </svg>
+  );
+}
+function IconUpload({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z" />
+    </svg>
+  );
+}
+function IconSearch({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
+    </svg>
+  );
+}
+function IconHeadphones({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 1c-4.97 0-9 4.03-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7c0-4.97-4.03-9-9-9z" />
+    </svg>
+  );
+}
+function IconWave({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+    </svg>
+  );
+}
+
+// ── Component ────────────────────────────────────────────────
 export function PatientDashboard() {
-  const { user, userId } = useAuth();
-  const { unreadCount } = useNotifications();
   const navigate = useNavigate();
-  const [stats, setStats] = useState({ total: 0, upcoming: 0, completed: 0 });
-  const [nextAppointment, setNextAppointment] = useState<any>(null);
-  
-  // Reminder Alert State
-  const [activeReminder, setActiveReminder] = useState<any>(null);
-  const [reminders, setReminders] = useState<any[]>([]);
+  const { userId: authId } = useAuth();
+  const { profile } = useProfile();
+  const displayName = useDisplayName();
+  const patientId = authId ?? Number(localStorage.getItem("user_id"));
+
+  const [upcoming, setUpcoming] = useState<ApptItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [dashStats, setDashStats] = useState<any>(null);
+  const [healthTip, setHealthTip] = useState<string>("Fetching your personalized health tip...");
+
+  // 1. Fetch unread notifications count and health tip
+  useEffect(() => {
+    if (!patientId) return;
+
+    // Fetch notifications count
+    fetch(`/api/notifications?user_id=${patientId}&role=patient`)
+      .then(r => r.ok ? r.json() : { unread_count: 0 })
+      .then((data: any) => {
+        const count = data.unread_count ?? (Array.isArray(data) ? data.filter((n: any) => !n.is_read).length : 0);
+        const local = JSON.parse(localStorage.getItem('local_notifications') || '[]');
+        const localUnread = local.filter((n: any) => !n.is_read).length;
+        setUnreadCount(count + localUnread);
+      })
+      .catch(() => { });
+
+    // Fetch daily health tip
+    aiService.getDailyHealthTip(patientId)
+      .then(res => {
+        if (res.tip) setHealthTip(res.tip);
+      })
+      .catch(err => {
+        console.error("AI Tip Error:", err);
+        setHealthTip("Drink enough water, eat balanced meals, and take short breaks to stay healthy today.");
+      });
+  }, [patientId]);
+
+  const fetchDashboardData = useCallback(() => {
+    if (!patientId) return;
+    fetch(`/api/my-appointments?user_id=${patientId}&role=patient&status=Scheduled`)
+      .then(r => r.json())
+      .then(appts => {
+        const sorted = sortAscending(Array.isArray(appts) ? appts : []);
+        setUpcoming(sorted);
+      }).catch(err => {
+        console.error(err);
+      });
+
+    dashboardService.getStats(patientId, "patient")
+      .then(res => {
+        setDashStats(res);
+      }).catch(err => console.error(err))
+      .finally(() => setLoading(false));
+  }, [patientId]);
+
+  // 2. Real-time socket updates for unread count + cancellations
+  useEffect(() => {
+    const socket = getSocket();
+    const inc = () => setUnreadCount(c => c + 1);
+    const handleCancelled = () => { if (patientId) fetchDashboardData(); };
+
+    const handleNewNotif = (data: any) => {
+      inc();
+      const msg = data?.message || data?.description || data?.text;
+      if (msg) {
+        window.alert(`🔔 Notification: ${data.title || 'Update'}\n\n${msg}`);
+      }
+      fetchDashboardData();
+    };
+
+    socket.on('new_notification', handleNewNotif);
+    socket.on('medication_reminder', inc);
+    socket.on('appointment_cancelled', handleCancelled);
+    socket.on('appointment_reassigned', handleNewNotif); // Show alert + refresh
+
+    return () => {
+      socket.off('new_notification', handleNewNotif);
+      socket.off('medication_reminder', inc);
+      socket.off('appointment_cancelled', handleCancelled);
+      socket.off('appointment_reassigned', handleCancelled);
+    };
+  }, [patientId, fetchDashboardData]);
 
   useEffect(() => {
-    const role = localStorage.getItem("role");
-    if (role !== "patient") {
-      navigate('/login');
-      return;
-    }
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
-    if (userId) {
-      fetchDashboardData();
-      
-      const dataInterval = setInterval(fetchDashboardData, 20000);
-      
-      // Reminder check interval
-      const reminderInterval = setInterval(checkMedicines, 30000);
-      
-      return () => {
-        clearInterval(dataInterval);
-        clearInterval(reminderInterval);
-      };
-    }
-  }, [userId, navigate]);
-
-  const fetchDashboardData = async () => {
-    try {
-      const now = new Date();
-      const todayStr = now.toISOString().split('T')[0];
-      const currentTimeStr = now.toTimeString().split(' ')[0].substring(0, 5);
-
-      const isUpcoming = (apt: any) => {
-        if (apt.status !== 'Scheduled') return false;
-        if (apt.date > todayStr) return true;
-        if (apt.date === todayStr && (apt.time || apt.time_slot) >= currentTimeStr) return true;
-        return false;
-      };
-
-      const [appointmentsData, remindersData] = await Promise.all([
-        apiGet('/api/my-appointments', { user_id: userId, role: 'patient' }),
-        apiGet('/api/reminders', { user_id: userId })
-      ]);
-
-      const upcomingApts = (appointmentsData || []).filter(isUpcoming).sort((a: any, b: any) => {
-        if (a.date !== b.date) return a.date.localeCompare(b.date);
-        return (a.time || a.time_slot).localeCompare(b.time || b.time_slot);
-      });
-
-      const completedApts = (appointmentsData || []).filter((a: any) => 
-        a.status === 'Completed' || a.consultation_status === 'Completed'
-      );
-
-      setStats({
-        total: appointmentsData.length,
-        upcoming: upcomingApts.length,
-        completed: completedApts.length
-      });
-      
-      if (upcomingApts.length > 0) {
-        setNextAppointment(upcomingApts[0]);
-      } else {
-        setNextAppointment(null);
-      }
-
-      setReminders(remindersData || []);
-    } catch (error) {
-      console.error('Failed to fetch dashboard data:', error);
-    }
-  };
-
-  const checkMedicines = () => {
-    const now = new Date();
-    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-    reminders.forEach(reminder => {
-      if (reminder.status === 'Active' && reminder.reminder_time === currentTime) {
-        setActiveReminder(reminder);
-      }
-    });
-  };
-
-  const handleMarkTaken = async () => {
-    if (!activeReminder) return;
-    try {
-      await apiPut(`/api/reminder/complete/${activeReminder.id}`, {
-        user_id: userId,
-        role: 'patient'
-      });
-      setActiveReminder(null);
-      fetchDashboardData();
-    } catch (e) {
-      console.error("Failed to mark taken:", e);
-    }
-  };
-
-  const services = [
-    { label: 'Book Appointment', icon: <Calendar className="text-white" size={24} />, color: 'bg-primary', path: '/book-appointment' },
-    { label: 'Upcoming', icon: <Clock className="text-white" size={24} />, color: 'bg-secondary', path: '/upcoming-appointments' },
-    { label: 'Prescriptions', icon: <FileText className="text-white" size={24} />, color: 'bg-warning', path: '/patient-prescriptions' },
-    { label: 'History', icon: <Activity className="text-white" size={24} />, color: 'bg-purple-500', path: '/history' },
-    { label: 'Medical Records', icon: <FolderOpen className="text-white" size={24} />, color: 'bg-indigo-500', path: '/medical-records' },
-    { label: 'Reminders', icon: <Bell className="text-white" size={24} />, color: 'bg-pink-500', path: '/medication-reminders' }
-  ];
-
-  const quickActions = [
-    { label: 'Book', icon: Calendar, path: '/book-appointment' },
-    { label: 'Upload', icon: Upload, path: '/medical-records' },
-    { label: 'Find Doctor', icon: Search, path: '/book-appointment' },
-    { label: 'Support', icon: Headphones, path: '/help-support' }
-  ];
-
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return {
-      month: d.toLocaleString('default', { month: 'short' }),
-      day: d.getDate()
+  useEffect(() => {
+    const refresh = () => { if (!document.hidden && patientId) fetchDashboardData(); };
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("appointment-booked", fetchDashboardData as EventListener);
+    window.addEventListener("appointment-cancelled", fetchDashboardData as EventListener);
+    return () => {
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("appointment-booked", fetchDashboardData as EventListener);
+      window.removeEventListener("appointment-cancelled", fetchDashboardData as EventListener);
     };
-  };
+  }, [patientId, fetchDashboardData]);
+
+  const nextAppt = upcoming[0] ?? null;
+
+  if (loading && !profile) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#F8FAFC]">
+        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-gray-400 font-bold uppercase text-[10px] tracking-[0.2em]">Synchronizing Your Health Dashboard...</p>
+      </div>
+    );
+  }
 
   return (
-    <ScreenContainer>
-      <div className="px-4 sm:px-6 lg:px-8 pt-6 pb-4 flex justify-between items-start">
-        <div>
-          <p className="text-text-secondary text-sm font-medium">Hello,</p>
-          <h1 className="text-2xl font-bold text-text-primary">
-            {user?.name || 'Patient'}
-          </h1>
-        </div>
-        <button
-          onClick={() => navigate('/notifications')}
-          className="p-3 bg-white rounded-2xl shadow-sm border border-gray-100 relative hover:bg-gray-50 transition-colors"
-        >
-          <Bell size={20} className="text-gray-600" />
-          {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center font-bold border-2 border-white">
-              {unreadCount}
-            </span>
-          )}
-        </button>
-      </div>
+    <div className="min-h-screen bg-[#F5F7FA] p-5">
+      <div className="max-w-4xl mx-auto space-y-5">
 
-      <div className="px-4 sm:px-6 lg:px-8 space-y-6 pb-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white rounded-2xl p-5 shadow-soft border border-gray-50 flex justify-between items-center text-center">
-            <div className="flex-1 border-r border-gray-100">
-              <p className="text-[10px] text-text-secondary uppercase font-black tracking-widest mb-1">Total</p>
-              <p className="text-2xl font-bold text-primary">{stats.total}</p>
-            </div>
-            <div className="flex-1 border-r border-gray-100">
-              <p className="text-[10px] text-text-secondary uppercase font-black tracking-widest mb-1">Upcoming</p>
-              <p className="text-2xl font-bold text-secondary">{stats.upcoming}</p>
-            </div>
-            <div className="flex-1">
-              <p className="text-[10px] text-text-secondary uppercase font-black tracking-widest mb-1">Completed</p>
-              <p className="text-2xl font-bold text-green-500">{stats.completed}</p>
-            </div>
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between py-2">
+          <div>
+            <p className="text-gray-400 text-sm">{dashStats && dashStats.greeting ? dashStats.greeting : "Hello"},</p>
+            <h1 className="text-2xl font-bold text-gray-900">{displayName}</h1>
           </div>
-
-          <Card
-            className="bg-red-50 border-red-100 flex items-center gap-4 cursor-pointer hover:shadow-md transition-shadow group"
-            onClick={() => navigate('/emergency-help')}
+          <button
+            onClick={() => navigate('/notifications')}
+            className="relative w-10 h-10 rounded-full bg-white border border-gray-100 shadow-sm flex items-center justify-center text-gray-500 hover:shadow-md transition-all active:scale-95"
           >
-            <div className="w-12 h-12 rounded-xl bg-red-500 flex items-center justify-center shadow-lg shadow-red-200 group-hover:scale-105 transition-transform">
-              <AlertTriangle size={24} className="text-white" />
+            <Bell size={20} />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-[10px] font-bold flex items-center justify-center">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* ── Emergency + Health Tip row ── */}
+        <div className="flex flex-col md:flex-row gap-3">
+
+          {/* Emergency Help */}
+          <div
+            onClick={() => navigate("/emergency-help")}
+            className="flex-1 bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-3 cursor-pointer hover:shadow-md transition"
+          >
+            <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              <svg viewBox="0 0 24 24" className="w-5 h-5 text-red-500" fill="currentColor">
+                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+              </svg>
             </div>
             <div className="flex-1">
-              <h3 className="font-bold text-red-700">Emergency Help</h3>
-              <p className="text-xs text-red-600 font-medium font-bold">
-                Call ambulance, contacts & hospitals
+              <p className="font-bold text-red-500 text-sm">Emergency Help</p>
+              <p className="text-gray-400 text-[11px] leading-tight mt-0.5">
+                Call ambulance, contacts &amp; hospitals
               </p>
             </div>
-            <ChevronRight size={20} className="text-red-400" />
-          </Card>
+            <svg viewBox="0 0 24 24" className="w-4 h-4 text-red-400 flex-shrink-0" fill="currentColor">
+              <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
+            </svg>
+          </div>
+
+          {/* Daily Health Tip */}
+          <div className="flex-1 bg-blue-50 rounded-2xl border border-blue-100 shadow-sm p-4 flex items-start gap-3">
+            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-500 flex-shrink-0 mt-0.5">
+              <IconWave className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="font-bold text-blue-600 text-sm">Daily Health Tip</p>
+              <p className="text-gray-500 text-[11px] leading-relaxed mt-1">
+                {healthTip}
+              </p>
+            </div>
+          </div>
+
         </div>
 
-        <div className="flex justify-between sm:justify-start sm:gap-8 bg-white rounded-2xl p-3 shadow-soft border border-gray-50 overflow-x-auto scrollbar-hide">
-          {quickActions.map((action, index) => (
-            <button
-              key={index}
-              onClick={() => navigate(action.path)}
-              className="flex flex-col items-center gap-1.5 p-2 hover:bg-primary/5 rounded-2xl transition-all min-w-[75px]"
-            >
-              <div className="w-11 h-11 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                <action.icon size={20} />
-              </div>
-              <span className="text-[11px] font-bold text-text-secondary">
-                {action.label}
-              </span>
-            </button>
-          ))}
-        </div>
 
+        {/* ── Services ── */}
         <div>
-           <h2 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
-             <Activity size={20} className="text-primary" />
-             Services
-           </h2>
-           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-             {services.map((action, index) => (
-               <button
-                 key={index}
-                 onClick={() => navigate(action.path)}
-                 className="bg-white p-5 rounded-[22px] shadow-soft border border-gray-50 flex flex-col items-center justify-center gap-3 hover:translate-y-[-4px] transition-all active:scale-95 group"
-               >
-                 <div className={`w-14 h-14 rounded-2xl ${action.color} flex items-center justify-center shadow-lg shadow-${action.color}/20 group-hover:scale-110 transition-transform`}>
-                   {action.icon}
-                 </div>
-                 <span className="font-bold text-sm text-text-primary text-center leading-tight">
-                   {action.label}
-                 </span>
-               </button>
-             ))}
-           </div>
-        </div>
-
-        {/* Next Appointment Card */}
-        {nextAppointment ? (
-           <Card
-              className="flex items-center gap-5 p-5 cursor-pointer hover:border-primary/30 transition-all shadow-premium"
-              onClick={() => navigate('/upcoming-appointments')}
-            >
-              <div className="w-[72px] h-[72px] rounded-2xl bg-blue-50 flex flex-col items-center justify-center text-primary font-bold border-2 border-white shadow-sm">
-                <span className="text-xs uppercase whitespace-nowrap tracking-widest">{formatDate(nextAppointment.date).month}</span>
-                <span className="text-3xl leading-none mt-1">{formatDate(nextAppointment.date).day}</span>
-              </div>
-              <div className="flex-1">
-                <h3 className="font-bold text-text-primary text-lg">
-                  Dr. {nextAppointment.doctor_name || 'Specialist'}
-                </h3>
-                <div className="flex items-center gap-1.5 text-text-secondary text-sm mt-1">
-                  <Clock size={14} className="text-primary" />
-                  <p className="font-medium font-bold">{nextAppointment.time || nextAppointment.time_slot}</p>
+          <p className="font-bold text-gray-800 text-lg mb-3">Services</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              { Icon: IconCalendar, label: "Book Appointment", color: "bg-blue-500", path: "/book-appointment" },
+              { Icon: IconSearch, label: "Symptom Checker", color: "bg-indigo-500", path: "/symptom-checker" },
+              { Icon: IconClock, label: "Upcoming", color: "bg-teal-500", path: "/upcoming-appointments" },
+              { Icon: IconPrescription, label: "Prescriptions", color: "bg-orange-400", path: "/prescriptions" },
+              { Icon: IconActivity, label: "History", color: "bg-purple-500", path: "/history" },
+              { Icon: IconFolder, label: "Medical Records", color: "bg-purple-600", path: "/medical-records" },
+              { Icon: IconBell, label: "Reminders", color: "bg-pink-500", path: "/medication-reminders" },
+            ].map(s => (
+              <div
+                key={s.label}
+                onClick={() => navigate(s.path)}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col items-center justify-center gap-3 cursor-pointer hover:shadow-md transition aspect-square"
+              >
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white ${s.color}`}>
+                  <s.Icon className="w-7 h-7" />
                 </div>
-                <p className="text-[10px] font-bold text-primary uppercase tracking-widest mt-1">
-                  {nextAppointment.specialization || 'Video Consultation'}
-                </p>
+                <p className="text-gray-700 text-xs font-bold text-center leading-tight">{s.label}</p>
               </div>
-              <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center border border-gray-100">
-                <ChevronRight size={20} className="text-gray-400" />
-              </div>
-            </Card>
-        ) : (
-           <div className="bg-white p-10 rounded-3xl border-2 border-dashed border-gray-100 flex flex-col items-center justify-center text-center">
-              <Calendar size={32} className="text-gray-200 mb-2" />
-              <p className="text-text-secondary font-medium">No upcoming sessions</p>
-           </div>
-        )}
-      </div>
-
-      {/* Reminder Notification Popup */}
-      <Modal
-        isOpen={!!activeReminder}
-        onClose={() => setActiveReminder(null)}
-        title="Medication Reminder"
-      >
-        <div className="py-6 text-center space-y-6">
-          <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto border-2 border-blue-100 shadow-lg shadow-blue-50">
-             <Pill size={40} className="text-primary animate-bounce" />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-bold text-text-primary">Medication Reminder</h2>
-            <p className="text-primary font-black text-2xl uppercase tracking-wider">Time to take {activeReminder?.medicine_name}</p>
-          </div>
-          
-          <div className="flex gap-4 pt-4">
-            <Button
-              variant="outline"
-              fullWidth
-              onClick={() => setActiveReminder(null)} // Locally skip
-              className="h-12 border-gray-200 text-gray-500 font-bold rounded-2xl"
-            >
-              Skip
-            </Button>
-            <Button
-              fullWidth
-              onClick={handleMarkTaken}
-              className="h-12 bg-green-500 hover:bg-green-600 text-white font-bold rounded-2xl shadow-lg shadow-green-100"
-            >
-              Mark Taken
-            </Button>
+            ))}
           </div>
         </div>
-      </Modal>
-    </ScreenContainer>
+
+
+      </div>
+    </div>
   );
 }

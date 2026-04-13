@@ -25,7 +25,7 @@ export function MissedAppointmentScreen() {
               fullWidth
               onClick={() => navigate('/book-appointment')}
               icon={<Calendar size={18} />}>
-
+              
               Reschedule Now
             </Button>
 
@@ -34,7 +34,7 @@ export function MissedAppointmentScreen() {
               variant="outline"
               onClick={() => navigate('/help-support')}
               icon={<Phone size={18} />}>
-
+              
               Contact Support
             </Button>
           </div>
@@ -45,7 +45,7 @@ export function MissedAppointmentScreen() {
           fullWidth
           onClick={() => navigate('/patient-dashboard')}
           className="mt-4">
-
+          
           Back to Dashboard
         </Button>
       </div>

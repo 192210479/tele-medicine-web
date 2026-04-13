@@ -1,67 +1,64 @@
-import React, { ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 
-interface ScreenContainerProps {
+export interface ScreenContainerProps {
   children: ReactNode;
   title?: string;
   showBack?: boolean;
-  onBack?: () => void;
-  className?: string;
-  noScroll?: boolean;
+  onBackClick?: () => void;
   actions?: ReactNode;
+  noScroll?: boolean;
+  scrollable?: boolean;
+  className?: string;
 }
-export function ScreenContainer({
+
+export const ScreenContainer = ({
   children,
   title,
   showBack = false,
-  onBack,
-  className = '',
+  onBackClick,
+  actions,
   noScroll = false,
-  actions
-}: ScreenContainerProps) {
+  scrollable = true,
+  className = "",
+}: ScreenContainerProps) => {
   const navigate = useNavigate();
-
-  const handleBack = () => {
-    if (onBack) {
-      onBack();
-    } else {
-      navigate(-1);
-    }
-  };
+  const handleBack = () => (onBackClick ? onBackClick() : navigate(-1));
+  const showHeader = !!(title || showBack || actions);
+  const scrollClass = noScroll || !scrollable ? "overflow-hidden" : "overflow-y-auto";
 
   return (
-    <div className={`flex flex-col h-full w-full bg-surface ${className}`}>
-      {/* Header */}
-      {(title || showBack || actions) && (
-        <header className="flex items-center justify-between px-4 sm:px-6 lg:px-8 py-4 sm:py-6 bg-white shadow-sm z-10 sticky top-0">
-          <div className="flex items-center gap-4">
+    <div className={`flex flex-col w-full h-full ${scrollClass} ${className}`}>
+      {showHeader && (
+        <header className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100 shrink-0 sticky top-0 z-20">
+          <div className="w-10 flex items-center">
             {showBack && (
               <button
                 onClick={handleBack}
-                className="p-2 -ml-2 rounded-full hover:bg-gray-100 text-gray-600 transition-colors"
+                className="p-1.5 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors"
+                aria-label="Go back"
               >
-                <ArrowLeft size={24} />
+                <ArrowLeft size={22} className="text-gray-700" />
               </button>
             )}
-            {title &&
-          <h1 className="text-xl sm:text-2xl font-bold text-text-primary">
-                {title}
-              </h1>
-          }
           </div>
-          {actions && <div>{actions}</div>}
+          {title ? (
+            <h1 className="flex-1 text-center text-base font-semibold text-gray-900 truncate px-2">
+              {title}
+            </h1>
+          ) : (
+            <div className="flex-1" />
+          )}
+          <div className="w-10 flex items-center justify-end">
+            {actions ?? null}
+          </div>
         </header>
       )}
+      <main className="flex-1 flex flex-col min-h-0">{children}</main>
+    </div>
+  );
+};
 
-      {/* Content */}
-      <main
-        className={`flex-1 ${noScroll ? 'overflow-hidden' : 'overflow-y-auto'} ${title || showBack ? '' : 'pt-4 sm:pt-6'}`}>
+export default ScreenContainer;
 
-        <div className="max-w-4xl mx-auto w-full h-full relative">
-          {children}
-        </div>
-      </main>
-    </div>);
-
-}

@@ -1,80 +1,130 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, ArrowLeft } from 'lucide-react';
+import { ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
+import { PasswordInput } from '../components/ui/PasswordInput';
+import { authApi } from '../services/authApi';
+
 export function ResetPasswordScreen() {
   const navigate = useNavigate();
-  const [isSent, setIsSent] = useState(false);
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const handleReset = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      setIsSent(true);
-    }, 1500);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [isSuccess, setIsSuccess] = useState(false);
+
+  const email = localStorage.getItem('resetEmail');
+
+  useEffect(() => {
+    if (!email) {
+      navigate('/forgot-password');
+    }
+  }, [email, navigate]);
+
+  const validatePassword = (pwd: string) => {
+    const hasUpper = /[A-Z]/.test(pwd);
+    const hasLower = /[a-z]/.test(pwd);
+    const hasNum = /\d/.test(pwd);
+    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(pwd);
+    return hasUpper && hasLower && hasNum && hasSpecial;
   };
+
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
+
+    if (password !== confirmPassword) {
+      setErrorMsg('Passwords do not match');
+      return;
+    }
+
+    if (!validatePassword(password)) {
+      setErrorMsg('Password must contain uppercase, lowercase, number, and special character');
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMsg('');
+    try {
+      await authApi.resetPassword(email, password);
+      // Clean up local storage
+      localStorage.removeItem('resetEmail');
+      setIsSuccess(true);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to reset password');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (isSuccess) {
+    return (
+      <div className="min-h-screen w-full bg-surface flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-soft text-center animate-fade-in">
+          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 mx-auto mb-6">
+            <CheckCircle2 size={40} />
+          </div>
+          <h2 className="text-2xl font-bold text-text-primary mb-2">
+            Password Reset
+          </h2>
+          <p className="text-text-secondary mb-8">
+            Your password has been successfully reset. You can now log in with your new password.
+          </p>
+          <Button fullWidth onClick={() => navigate('/login')}>
+            Back to Login
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen w-full bg-surface flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-soft">
         <div className="flex items-center gap-4 mb-8">
           <button
-            onClick={() => navigate(-1)}
+            type="button"
+            onClick={() => navigate('/login')}
             className="p-2 -ml-2 rounded-full hover:bg-gray-100 text-gray-600">
-
             <ArrowLeft size={24} />
           </button>
           <h1 className="text-2xl font-bold text-text-primary">
-            Reset Password
+            Create New Password
           </h1>
         </div>
 
-        {!isSent ?
         <div className="space-y-6">
-            <div>
-              <p className="text-text-secondary">
-                Enter your email address and we'll send you a link to reset your
-                password.
-              </p>
+          <p className="text-text-secondary">
+            Your new password must be different from previous used passwords.
+          </p>
+
+          {errorMsg && (
+            <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">
+              {errorMsg}
             </div>
+          )}
 
-            <form onSubmit={handleReset} className="space-y-6">
-              <Input
-              label="Email Address"
-              type="email"
-              placeholder="name@example.com"
-              icon={<Mail size={18} />}
-              required />
-
-              <Button type="submit" fullWidth isLoading={isLoading}>
-                Send Reset Link
-              </Button>
-            </form>
-          </div> :
-
-        <div className="flex flex-col items-center text-center space-y-6 animate-fade-in">
-            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-2">
-              <Mail size={40} />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold text-text-primary mb-2">
-                Check your email
-              </h2>
-              <p className="text-text-secondary">
-                We've sent a password reset link to your email address.
-              </p>
-            </div>
-            <Button
-            fullWidth
-            onClick={() => navigate('/login')}
-            variant="secondary">
-
-              Back to Login
+          <form onSubmit={handleReset} className="space-y-6">
+            <PasswordInput
+              label="New Password"
+              placeholder="••••••••"
+              value={password}
+              onChange={setPassword}
+            />
+            
+            <PasswordInput
+              label="Confirm Password"
+              placeholder="••••••••"
+              value={confirmPassword}
+              onChange={setConfirmPassword}
+            />
+          
+            <Button type="submit" fullWidth isLoading={isLoading}>
+              Reset Password
             </Button>
-          </div>
-        }
+          </form>
+        </div>
       </div>
-    </div>);
-
+    </div>
+  );
 }

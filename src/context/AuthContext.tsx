@@ -1,88 +1,80 @@
-import React, { useState, createContext, useContext, ReactNode } from 'react';
-import { apiPost } from '../services/api';
+import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
+import { saveAuth, clearAuth, getAuth } from '../utils/auth';
 
-export type UserRole = 'patient' | 'doctor' | 'admin' | null;
-
-interface User {
-  id: number;
-  name: string;
-  email: string;
-  role: UserRole;
-  avatar?: string;
+export interface AuthPayload {
+  user_id: number;
+  role: string;
+  name?: string;       // LoginScreen passes this key
+  full_name?: string;  // alternative key
+  email?: string;
 }
+export type AuthUser = AuthPayload;
 
 interface AuthContextType {
-  user: User | null;
-  role: UserRole;
   userId: number | null;
-  login: (role: UserRole, email: string, password: string) => Promise<any>;
+  role: string | null;
+  name: string | null;
+  email: string | null;
+  login: (userData: AuthPayload) => void;
   logout: () => void;
   isAuthenticated: boolean;
+  isLoading: boolean;
+  user?: any;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => {
-    const savedUser = localStorage.getItem('telemedicine_user');
-    return savedUser ? JSON.parse(savedUser) : null;
-  });
+  const [userId,  setUserId]  = useState<number | null>(() => getAuth()?.user_id ?? null);
+  const [role,    setRole]    = useState<string | null>(() => getAuth()?.role   ?? null);
+  const [name,    setName]    = useState<string | null>(() => localStorage.getItem("name"));
+  const [email,   setEmail]   = useState<string | null>(() => localStorage.getItem("email"));
+  const [isLoading, setIsLoading] = useState(true);
 
-  const login = async (role: UserRole, email: string, password: string) => {
-    try {
-      const response = await apiPost('/api/login', {
-        email,
-        password,
-        role,
-        device_name: navigator.userAgent.substring(0, 100),
-        location: 'Web Client'
-      });
+  useEffect(() => { setIsLoading(false); }, []);
 
-      const newUser: User = {
-        id: response.user_id,
-        name: response.role === 'patient' ? 'Patient' : response.role === 'doctor' ? 'Doctor' : 'Admin',
-        email: email,
-        role: response.role as UserRole,
-      };
+  const login = (userData: AuthPayload) => {
+    saveAuth({ user_id: userData.user_id, role: userData.role as "patient" | "doctor" | "admin" });
+    localStorage.setItem("user_id", String(userData.user_id));
+    localStorage.setItem("role",    userData.role);
+    // Accept both "name" and "full_name" keys
+    const displayName = userData.name ?? userData.full_name ?? null;
+    if (displayName)    localStorage.setItem("name",  displayName);
+    if (userData.email) localStorage.setItem("email", userData.email);
 
-      setUser(newUser);
-      localStorage.setItem('telemedicine_user', JSON.stringify(newUser));
-      localStorage.setItem('user_id', response.user_id.toString());
-      localStorage.setItem('role', response.role);
-      return response;
-    } catch (error) {
-      console.error('Login failed:', error);
-      throw error;
-    }
+    setUserId(userData.user_id);
+    setRole(userData.role);
+    setName(displayName);
+    setEmail(userData.email ?? null);
   };
 
   const logout = () => {
-    setUser(null);
-    localStorage.removeItem('telemedicine_user');
-    localStorage.removeItem('user_id');
-    localStorage.removeItem('role');
+    clearAuth();
+    ["user_id","role","name","full_name","email",
+     "userId","userEmail","auth_token","profile_image","resetEmail"]
+      .forEach(k => { localStorage.removeItem(k); sessionStorage.removeItem(k); });
+    setUserId(null); setRole(null); setName(null); setEmail(null);
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        role: user?.role || null,
-        userId: user?.id || null,
-        login,
-        logout,
-        isAuthenticated: !!user
-      }}
-    >
+    <AuthContext.Provider value={{
+      userId, role, name, email,
+      login, logout,
+      isAuthenticated: !!userId,
+      isLoading,
+      user: { name, email, role, id: userId },
+    }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export function useAuth() {
+export function useAuth(): AuthContextType {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
 }
+
+export default AuthContext;

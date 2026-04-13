@@ -1,21 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiGet, apiDelete } from '../services/api';
-import { useNotifications } from '../context/NotificationContext';
-import socket from '../services/socketService';
+import { useAuth } from '../context/AuthContext';
+import { getSocket } from '../utils/socketUtils';
 import {
   Users,
   UserPlus,
   Calendar,
   DollarSign,
   AlertCircle,
-  ChevronRight,
-  MoreHorizontal,
   Bell,
-  Trash2,
-  CreditCard,
-  Settings } from
-'lucide-react';
+  Settings,
+  MoreHorizontal
+} from 'lucide-react';
 import {
   LineChart,
   Line,
@@ -25,498 +21,718 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer } from
-'recharts';
+  ResponsiveContainer
+} from 'recharts';
 import { ScreenContainer } from '../components/layout/ScreenContainer';
 import { Card } from '../components/ui/Card';
-import { Badge } from '../components/ui/Badge';
+import { Modal } from '../components/ui/Modal';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+
+type Stats = {
+  patients: number;
+  revenue: number;
+  active_doctors: number;
+  today_appointments: number;
+};
+
+type TrendPoint = { month: string; revenue: number };
+type WeekPoint = { day: string; count: number };
+
+type DoctorRow = {
+  id: number;
+  name: string;
+  email: string;
+  phone: string | null;
+  specialization: string;
+  experience: number;
+  fee: number;
+  status: string;
+  profile_image: string | null;
+  license_number: string;
+  created_at: string | null;
+  total_appointments: number;
+  today_appointments: number;
+  last_appointment: string | null;
+};
+
+type PatientRow = {
+  id: number;
+  full_name: string;
+  email: string;
+  phone: string;
+  age: number | null;
+  gender: string;
+  address: string;
+  profile_image: string | null;
+  registered_at: string | null;
+  last_appointment: string | null;
+  last_doctor_name: string | null;
+  total_appointments: number;
+  status: string;
+};
+
+type ApptRow = {
+  id: number;
+  patient_name: string;
+  doctor_name: string;
+  specialization: string | null;
+  date: string;
+  time: string;
+  status: string;
+};
+
+type TicketRow = {
+  id: number;
+  user_id: number;
+  role: string;
+  issue_type: string;
+  title: string;
+  description: string;
+  priority: string;
+  status: string;
+  created_at: string | null;
+  user_name?: string;
+  resolution_note?: string;
+};
+
+type TabKey = "Doctors" | "Patients" | "Appointments" | "Support";
 
 export function AdminDashboard() {
   const navigate = useNavigate();
-  const [adminName, setAdminName] = useState('Admin');
-  const [activeTab, setActiveTab] = useState<'doctors' | 'patients' | 'appointments' | 'payments'>('doctors');
-  const [showNotifications, setShowNotifications] = useState(false);
-  const { notifications, unreadCount, markAsRead } = useNotifications();
+  const { userId: authUserId } = useAuth();
+  const adminId = authUserId ?? Number(localStorage.getItem("user_id"));
 
-  // Dynamic Dashboard Data
-  const [stats, setStats] = useState<any>({
-    total_patients: 0,
-    total_revenue: '0',
-    active_doctors: 0,
-    today_appointments: 0
-  });
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [trend, setTrend] = useState<TrendPoint[]>([]);
+  const [weekly, setWeekly] = useState<WeekPoint[]>([]);
 
-  const [revenueData, setRevenueData] = useState<any[]>([]);
-  const [appointmentsData, setAppointmentsData] = useState<any[]>([]);
-  const [pendingCount, setPendingCount] = useState(0);
-  const [doctors, setDoctors] = useState<any[]>([]);
-  const [patients, setPatients] = useState<any[]>([]);
-  const [appointments, setAppointments] = useState<any[]>([]);
-  const [payments, setPayments] = useState<any[]>([]);
-  // const [notifications, setNotifications] = useState<any[]>([]); // Using context
-  // const [unreadCount, setUnreadCount] = useState(0); // Using context
-  const [errorStates, setErrorStates] = useState<any>({
-    stats: false,
-    graphs: false,
-    pending: false,
-    tab: false
-  });
+  const [activeTab, setTab] = useState<TabKey>("Doctors");
+  const [doctors, setDoctors] = useState<DoctorRow[]>([]);
+  const [patients, setPatients] = useState<PatientRow[]>([]);
+  const [appointments, setAppointments] = useState<ApptRow[]>([]);
+  const [tickets, setTickets] = useState<TicketRow[]>([]);
+  const [tabLoading, setTabLoading] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  const adminId = localStorage.getItem("user_id");
+  // Support Ticket Management
+  const [selectedTicket, setSelectedTicket] = useState<TicketRow | null>(null);
+  const [resolutionNote, setResolutionNote] = useState("");
+  const [isResolving, setIsResolving] = useState(false);
 
-  const reloadStats = useCallback(async () => {
-    try {
-      const data = await apiGet('/api/admin/platform-stats', { role: 'admin' });
-      if (data) {
-        setStats({
-          total_patients: data.patients ?? 0,
-          active_doctors: data.doctors ?? 0,
-          today_appointments: data.appointments ?? 0,
-          total_revenue: data.revenue ? `₹${(data.revenue/100000).toFixed(1)}L` : '0'
-        });
-        setErrorStates((prev: any) => ({ ...prev, stats: false }));
-      }
-    } catch (e) {
-      console.error("Stats load failed", e);
-      setErrorStates((prev: any) => ({ ...prev, stats: true }));
-    }
+  const fetchStats = useCallback(() => {
+    fetch("/api/admin/dashboard-stats?role=admin")
+      .then(r => r.json())
+      .then(setStats)
+      .catch(console.error);
+
+    // Fetch unread count
+    fetch(`/api/notifications?user_id=${adminId}&role=admin`)
+      .then(r => r.json())
+      .then(data => setUnreadCount(data.unread_count ?? 0))
+      .catch(() => { });
   }, [adminId]);
 
-  const reloadGraphs = useCallback(async () => {
-    try {
-      const revData = await apiGet('/api/admin/revenue-trend', { role: 'admin' });
-      if (revData && revData.months) {
-        setRevenueData(revData.months.map((m: string, i: number) => ({ month: m, revenue: revData.revenue[i] })));
-      }
+  const fetchCharts = useCallback(() => {
+    fetch("/api/admin/revenue_trend")
+      .then(r => r.json())
+      .then((data: TrendPoint[]) => {
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        if (Array.isArray(data) && data.length > 0) {
+          const fixed = data.map((item, idx) => {
+            const lastMonthName = data[data.length - 1].month;
+            let lastIdx = monthNames.indexOf(lastMonthName);
+            if (lastIdx === -1) lastIdx = new Date().getMonth();
+            const correctMonth = monthNames[(lastIdx - (data.length - 1 - idx) + 12) % 12];
+            return { ...item, month: correctMonth };
+          });
+          setTrend(fixed);
+        } else {
+          setTrend(data || []);
+        }
+      })
+      .catch(console.error);
 
-      const aptData = await apiGet('/api/admin/appointments-weekly', { role: 'admin' });
-      if (aptData && aptData.days) {
-        setAppointmentsData(aptData.days.map((d: string, i: number) => ({ day: d, appointments: aptData.appointments[i] })));
-      }
-      setErrorStates((prev: any) => ({ ...prev, graphs: false }));
-    } catch (e) {
-      console.error("Graphs load failed", e);
-      setErrorStates((prev: any) => ({ ...prev, graphs: true }));
-    }
+    fetch("/api/admin/weekly_appointments")
+      .then(r => r.json())
+      .then((data: WeekPoint[]) => {
+        const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        if (Array.isArray(data)) {
+          const fixed = data.map((item, idx) => ({
+            ...item,
+            day: dayNames[idx % 7]
+          }));
+          setWeekly(fixed);
+        } else {
+          setWeekly([]);
+        }
+      })
+      .catch(console.error);
   }, []);
 
-  const reloadPending = useCallback(async () => {
-    try {
-      const data = await apiGet('/api/admin/doctors/pending', { role: 'admin' });
-      setPendingCount(data?.count ?? (Array.isArray(data) ? data.length : 0));
-      setErrorStates((prev: any) => ({ ...prev, pending: false }));
-    } catch (e) {
-      console.error("Pending load failed", e);
-      setErrorStates((prev: any) => ({ ...prev, pending: true }));
-    }
+  const fetchTabData = useCallback((tab: TabKey) => {
+    setTabLoading(true);
+    const urls: Record<TabKey, string> = {
+      Doctors: "/api/admin/doctors/all?role=admin",
+      Patients: "/api/admin/patients/all?role=admin",
+      Appointments: "/api/admin/appointments_list",
+      Support: "/api/admin/support/tickets",
+    };
+    fetch(urls[tab])
+      .then(r => r.json())
+      .then(data => {
+        if (tab === "Doctors") setDoctors(Array.isArray(data) ? data : []);
+        if (tab === "Patients") setPatients(Array.isArray(data) ? data : []);
+        if (tab === "Appointments") setAppointments(Array.isArray(data) ? data : []);
+        if (tab === "Support") setTickets(Array.isArray(data) ? data : []);
+      })
+      .catch(console.error)
+      .finally(() => setTabLoading(false));
   }, []);
-
-  const reloadTabData = useCallback(async () => {
-    try {
-      let data;
-      if (activeTab === 'doctors') data = await apiGet('/api/admin/doctors', { role: 'admin' });
-      else if (activeTab === 'patients') data = await apiGet('/api/admin/users', { role: 'admin' });
-      else if (activeTab === 'appointments') data = await apiGet('/api/admin/appointments', { role: 'admin' });
-      else if (activeTab === 'payments') data = await apiGet('/api/admin/payments', { role: 'admin' });
-
-      if (Array.isArray(data)) {
-        if (activeTab === 'doctors') setDoctors(data);
-        else if (activeTab === 'patients') setPatients(data);
-        else if (activeTab === 'appointments') setAppointments(data);
-        else if (activeTab === 'payments') setPayments(data);
-      }
-      setErrorStates((prev: any) => ({ ...prev, tab: false }));
-    } catch (e) {
-      console.error("Tab data load failed", e);
-      setErrorStates((prev: any) => ({ ...prev, tab: true }));
-    }
-  }, [activeTab, adminId]);
-
-  // reloadNotifications moved to context
-
-  // handleMarkRead moved to context
-
-  const loadProfile = async () => {
-    try {
-      const profile = await apiGet('/api/profile', { user_id: adminId, role: 'admin' });
-      if (profile?.full_name) setAdminName(profile.full_name);
-    } catch (e) {
-      console.error("Profile load failed", e);
-    }
-  };
-
-  const handleDeleteDoctor = async (id: number) => {
-    if (!window.confirm("Delete this doctor?")) return;
-    try {
-      await apiDelete(`/api/admin/doctor/delete/${id}`, { role: 'admin' });
-      reloadTabData();
-    } catch (e) {
-      alert("Failed to delete doctor");
-    }
-  };
-
-  const handleDeletePatient = async (id: number) => {
-    if (!window.confirm("Delete this patient?")) return;
-    try {
-      await apiDelete(`/api/admin/user/delete/${id}`, { role: 'admin' });
-      reloadTabData();
-    } catch (e) {
-      alert("Failed to delete patient");
-    }
-  };
 
   useEffect(() => {
-    const role = localStorage.getItem("role");
-    if (role !== "admin") {
-      navigate('/login');
-      return;
-    }
+    fetchStats();
+    fetchCharts();
+    // Pre-fetch doctors and patients for name mapping in Support
+    fetch("/api/admin/doctors/all?role=admin").then(r => r.json()).then(setDoctors).catch(() => { });
+    fetch("/api/admin/patients/all?role=admin").then(r => r.json()).then(setPatients).catch(() => { });
+  }, [fetchStats, fetchCharts]);
 
-    loadProfile();
-    reloadStats();
-    reloadGraphs();
-    reloadPending();
-    // reloadNotifications(); // Handled by context
+  useEffect(() => {
+    fetchTabData(activeTab);
+  }, [activeTab, fetchTabData]);
 
-    const statsInterval = setInterval(reloadStats, 15000);
-    const pendingInterval = setInterval(reloadPending, 20000);
+  // Socket listener for admin notifications + real-time cancellations
+  useEffect(() => {
+    const socket = getSocket();
+    const handleNew = () => setUnreadCount(c => c + 1);
+    const handleCancelled = () => {
+      fetchStats();
+      fetchTabData(activeTab);
+    };
 
-    // Socket Setup
-    if (socket) {
-      socket.emit("admin_join_dashboard", { role: "admin" });
+    socket.on('new_notification', handleNew);
+    socket.on('appointment_cancelled', handleCancelled);
+    window.addEventListener('appointment-cancelled', handleCancelled);
 
-      const handleDashboardUpdate = () => {
-        reloadStats();
-        reloadGraphs();
-        reloadPending();
-        // reloadNotifications(); // Handled by context
-        reloadTabData();
-      };
-
-      socket.on("dashboard_update", handleDashboardUpdate);
-      socket.on("new_appointment", handleDashboardUpdate);
-      socket.on("consultation_started", handleDashboardUpdate);
-      socket.on("consultation_ended", handleDashboardUpdate);
-
-      return () => {
-        clearInterval(statsInterval);
-        clearInterval(pendingInterval);
-        socket.off("dashboard_update", handleDashboardUpdate);
-        socket.off("new_appointment", handleDashboardUpdate);
-        socket.off("consultation_started", handleDashboardUpdate);
-        socket.off("consultation_ended", handleDashboardUpdate);
-      };
-    }
+    // Also join admin_dashboard room for stats updates if needed
+    socket.emit('admin_join_dashboard', { role: 'admin' });
 
     return () => {
-      clearInterval(statsInterval);
-      clearInterval(pendingInterval);
+      socket.off('new_notification', handleNew);
+      socket.off('appointment_cancelled', handleCancelled);
+      window.removeEventListener('appointment-cancelled', handleCancelled);
     };
-  }, [navigate, reloadStats, reloadPending, reloadGraphs, reloadTabData]);
+  }, [activeTab, fetchStats, fetchTabData]);
 
-  useEffect(() => {
-    reloadTabData();
-  }, [reloadTabData]);
+  const fmtRevenue = (n: number): string => {
+    if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`;
+    if (n >= 1000) return `₹${(n / 1000).toFixed(1)}K`;
+    return `₹${n}`;
+  };
+
+  const getPatientGrowth = () => {
+    if (!patients || patients.length === 0) return 0;
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+    const currentPeriod = patients.filter(p => p.registered_at && new Date(p.registered_at) >= thirtyDaysAgo).length;
+    const prevPeriod = patients.filter(p => p.registered_at && new Date(p.registered_at) >= sixtyDaysAgo && new Date(p.registered_at) < thirtyDaysAgo).length;
+
+    if (prevPeriod === 0) return currentPeriod > 0 ? 100 : 0;
+    return Math.round(((currentPeriod - prevPeriod) / prevPeriod) * 100);
+  };
+
+  const getRevenueGrowth = () => {
+    if (!trend || trend.length < 2) return 0;
+    const last = trend[trend.length - 1].revenue;
+    const prev = trend[trend.length - 2].revenue;
+    if (prev === 0) return last > 0 ? 100 : 0;
+    return Math.round(((last - prev) / prev) * 100);
+  };
+
+  const Av = ({ img, name, color = "blue" }: {
+    img: string | null; name: string; color?: string
+  }) => {
+    const avatarUrl = img ? (img.startsWith('/api/') || img.startsWith('http') ? img : `/api/profile/image/file/${img}`) : null;
+    return avatarUrl ? (
+      <img src={avatarUrl} alt={name}
+        className="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-gray-100 shadow-sm"
+        onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+    ) : (
+      <div className={`w-10 h-10 rounded-full bg-${color}-100 flex items-center
+                       justify-center text-${color}-700 font-bold flex-shrink-0 border border-${color}-50`}>
+        {name?.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
+      </div>
+    );
+  };
+
+  const getReporterName = (t: TicketRow) => {
+    if (t.user_name && t.user_name !== "Unknown User" && t.user_name !== "Unknown") return t.user_name;
+    const found = t.role === 'doctor'
+      ? doctors.find(d => d.id === t.user_id)?.name
+      : patients.find(p => p.id === t.user_id)?.full_name;
+    return found || `User #${t.user_id}`;
+  };
+
+  const handleUpdateStatus = async (ticketId: number, newStatus: string, note?: string) => {
+    const ticket = tickets.find(t => t.id === ticketId);
+    if (!ticket) return;
+
+    setIsResolving(true);
+    try {
+      // 1. Persist to backend
+      await fetch('/api/admin/support/tickets/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticket_id: ticketId,
+          status: newStatus,
+          resolution_note: note || (newStatus === 'Escalated' ? 'Issue has been escalated for further review.' : undefined)
+        })
+      });
+
+      // 2. Emit real-time notification via socket
+      const socket = getSocket();
+      socket.emit('new_notification', {
+        user_id: ticket.user_id,
+        role: ticket.role,
+        type: 'support',
+        title: `Issue ${newStatus}`,
+        description: note || `Your support ticket regarding "${ticket.title}" is now ${newStatus.toLowerCase()}.`,
+        created_at: new Date().toISOString()
+      });
+
+      // 3. Update local state
+      setTickets(prev => prev.map(t =>
+        t.id === ticketId ? { ...t, status: newStatus, resolution_note: note || t.resolution_note } : t
+      ));
+
+      if (selectedTicket?.id === ticketId) {
+        setSelectedTicket(null);
+        setResolutionNote("");
+      }
+    } catch (err) {
+      console.error("Failed to update ticket status:", err);
+    } finally {
+      setIsResolving(false);
+    }
+  };
+
+  const StatusBadge = ({ s }: { s: string }) => {
+    const map: Record<string, string> = {
+      Approved: "bg-green-100 text-green-700",
+      Active: "bg-green-100 text-green-700",
+      Scheduled: "bg-blue-100 text-blue-700",
+      Completed: "bg-green-100 text-green-700",
+      Pending: "bg-orange-100 text-orange-600",
+      Cancelled: "bg-red-100 text-red-600",
+      Missed: "bg-gray-100 text-gray-500",
+      Rejected: "bg-red-100 text-red-600",
+      Inactive: "bg-gray-100 text-gray-500",
+      Open: "bg-blue-100 text-blue-700",
+      Escalated: "bg-red-100 text-red-700",
+      Closed: "bg-gray-100 text-gray-600",
+      Resolved: "bg-green-100 text-green-700",
+    };
+    const displayS = (s === "Payment Pending" || s === "Pending") ? "Scheduled" : s;
+    const style = map[displayS] ?? map[s] ?? "bg-gray-100 text-gray-600";
+
+    return (
+      <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full
+                        ${style}`}>
+        {displayS}
+      </span>
+    );
+  };
 
   return (
-    <ScreenContainer className="bg-gray-50">
-      {/* Header */}
-      <div className="bg-white px-4 sm:px-6 lg:px-8 pt-6 pb-4 border-b border-gray-100">
-        <div className="flex justify-between items-center">
+    <div className="min-h-screen bg-[#F8FAFC]">
+      <ScreenContainer className="pb-8">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-100 px-6 py-5 flex items-center justify-between shadow-sm sticky top-0 z-30">
           <div>
-            <p className="text-gray-500 text-sm font-medium uppercase tracking-wider">
-              Overview
-            </p>
-            <h1 id="dashboardUserName" className="text-3xl font-bold text-gray-900">
-              {adminName}
-            </h1>
+            <p className="text-[10px] font-black text-primary uppercase tracking-[0.2em] mb-1">System Overview</p>
+            <h1 className="text-2xl font-black text-gray-900 tracking-tight">Admin Dashboard</h1>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <button
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center border border-gray-200 text-gray-600 relative hover:bg-white transition-colors">
-
-                <Bell size={20} />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center font-bold border-2 border-white">
-                    {unreadCount}
-                  </span>
-                )}
-              </button>
-
-              {/* Static Notifications Panel */}
-              {showNotifications && (
-                <Card className="absolute right-0 mt-2 w-80 max-h-[400px] overflow-y-auto z-50 shadow-2xl animate-fade-in divide-y divide-gray-100 p-0 border border-gray-100">
-                  <div className="p-4 bg-white sticky top-0 flex justify-between items-center z-10 border-b border-gray-100">
-                    <h3 className="font-bold text-sm text-gray-900">Notifications</h3>
-                  </div>
-                  <div className="bg-white">
-                    {notifications.length > 0 ? notifications.map((n: any) => (
-                      <div 
-                        key={n.id} 
-                        onClick={() => !n.is_read && markAsRead(n.id)}
-                        className={`p-4 flex gap-3 cursor-pointer ${!n.is_read ? 'bg-blue-50/20' : ''}`}
-                      >
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${!n.is_read ? 'bg-primary text-white' : 'bg-gray-100 text-gray-400'}`}>
-                          <Bell size={16} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className={`text-xs ${!n.is_read ? 'font-bold text-gray-900' : 'font-medium text-gray-600'} line-clamp-1`}>{n.title}</h4>
-                          <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">{n.description}</p>
-                        </div>
-                      </div>
-                    )) : (
-                      <div className="p-8 text-center text-gray-400 text-xs">No notifications available</div>
-                    )}
-                  </div>
-                </Card>
+          <div className="flex gap-3">
+            <button
+              onClick={() => navigate('/notifications')}
+              className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-500 hover:bg-white hover:shadow-md transition-all relative"
+            >
+              <Bell size={20} />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-white shadow-sm">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
               )}
-            </div>
-            
-            <button className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center border border-gray-200 text-gray-600 transition-colors hover:bg-white">
+            </button>
+            <button className="w-10 h-10 rounded-xl bg-gray-100 flex items-center
+                               justify-center text-gray-600 hover:bg-gray-200">
               <Settings size={20} />
             </button>
           </div>
         </div>
-      </div>
 
-      <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-6 pb-8">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="p-5 border border-gray-100">
-            <div className="flex justify-between items-start mb-3">
-              <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center">
-                <Users size={24} className="text-[#1E88E5]" />
+        <div className="p-6 space-y-8 max-w-7xl mx-auto">
+          {/* Stats Cards Row */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-soft p-5 group hover:shadow-md transition-all">
+              <div className="flex justify-between items-start mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 text-2xl shadow-inner group-hover:scale-110 transition-transform">👥</div>
+                {(() => {
+                  const growth = getPatientGrowth();
+                  return (
+                    <span className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest border ${growth >= 0 ? "bg-green-50 text-green-600 border-green-100" : "bg-red-50 text-red-600 border-red-100"
+                      }`}>
+                      {growth >= 0 ? `+${growth}%` : `${growth}%`}
+                    </span>
+                  );
+                })()}
               </div>
+              <p className="text-3xl font-black text-gray-900 leading-none">{stats?.patients?.toLocaleString() ?? "—"}</p>
+              <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-2">Total Patients</p>
             </div>
-            <h3 className="text-3xl font-bold text-gray-900">
-              {errorStates.stats ? "No data available" : stats.total_patients.toLocaleString()}
-            </h3>
-            <p className="text-sm text-gray-500 font-medium mt-1">Total Patients</p>
-          </Card>
 
-          <Card className="p-5 border border-gray-100">
-            <div className="flex justify-between items-start mb-3">
-              <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center">
-                <DollarSign size={24} className="text-[#43A047]" />
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-soft p-5 group hover:shadow-md transition-all">
+              <div className="flex justify-between items-start mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-green-50 flex items-center justify-center text-green-600 text-2xl shadow-inner group-hover:scale-110 transition-transform">₹</div>
+                {(() => {
+                  const growth = getRevenueGrowth();
+                  return (
+                    <span className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest border ${growth >= 0 ? "bg-green-50 text-green-600 border-green-100" : "bg-red-50 text-red-600 border-red-100"
+                      }`}>
+                      {growth >= 0 ? `+${growth}%` : `${growth}%`}
+                    </span>
+                  );
+                })()}
               </div>
+              <p className="text-3xl font-black text-gray-900 leading-none">{fmtRevenue(stats?.revenue ?? 0)}</p>
+              <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-2">Total Revenue</p>
             </div>
-            <h3 className="text-3xl font-bold text-gray-900">
-              {errorStates.stats ? "No data available" : stats.total_revenue}
-            </h3>
-            <p className="text-sm text-gray-500 font-medium mt-1">Total Revenue</p>
-          </Card>
 
-          <Card className="p-5 border border-gray-100">
-            <div className="flex justify-between items-start mb-3">
-              <div className="w-12 h-12 rounded-xl bg-teal-50 flex items-center justify-center">
-                <UserPlus size={24} className="text-[#26A69A]" />
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-soft p-5 group hover:shadow-md transition-all">
+              <div className="flex justify-between items-start mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-teal-50 flex items-center justify-center text-teal-600 text-2xl shadow-inner group-hover:scale-110 transition-transform">🩺</div>
               </div>
+              <p className="text-3xl font-black text-gray-900 leading-none">{stats?.active_doctors ?? "—"}</p>
+              <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-2">Active Doctors</p>
             </div>
-            <h3 className="text-3xl font-bold text-gray-900">
-              {errorStates.stats ? "No data available" : stats.active_doctors}
-            </h3>
-            <p className="text-sm text-gray-500 font-medium mt-1">Active Doctors</p>
-          </Card>
 
-          <Card className="p-5 border border-gray-100">
-            <div className="flex justify-between items-start mb-3">
-              <div className="w-12 h-12 rounded-xl bg-purple-50 flex items-center justify-center">
-                <Calendar size={24} className="text-purple-600" />
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-soft p-5 group hover:shadow-md transition-all">
+              <div className="flex justify-between items-start mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-purple-50 flex items-center justify-center text-purple-600 text-2xl shadow-inner group-hover:scale-110 transition-transform">📅</div>
+                <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 uppercase tracking-widest border border-blue-100">Today</span>
               </div>
+              <p className="text-3xl font-black text-gray-900 leading-none">{stats?.today_appointments ?? "—"}</p>
+              <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-2">Appointments</p>
             </div>
-            <h3 className="text-3xl font-bold text-gray-900">
-              {errorStates.stats ? "No data available" : stats.today_appointments}
-            </h3>
-            <p className="text-sm text-gray-500 font-medium mt-1">Appointments</p>
-          </Card>
-        </div>
+          </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Revenue Trend Graph */}
-          <Card className="p-5 border border-gray-100">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold text-gray-900">Revenue Trend</h3>
-              <span className="text-sm text-gray-500">Last 5 months</span>
-            </div>
-            <div className="h-64">
-              {errorStates.graphs ? (
-                <div className="h-full flex items-center justify-center text-gray-400">No data available</div>
-              ) : (
+          {/* Charts Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="bg-white border-none shadow-soft p-6">
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h3 className="text-lg font-black text-gray-900 tracking-tight leading-none">Revenue Trend</h3>
+                  <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-1">Last 5 months</p>
+                </div>
+              </div>
+              <div className="h-[220px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={revenueData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                    <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#757575'}} />
-                    <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#757575'}} tickFormatter={(v) => `₹${v/1000}k`} />
-                    <Tooltip 
-                      contentStyle={{borderRadius: '8px', border: '1px solid #eee', boxShadow: '0 4px 12px rgba(0,0,0,0.05)'}} 
-                      formatter={(val: number) => [`₹${val.toLocaleString()}`, 'Revenue']}
+                  <LineChart data={trend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                    <XAxis
+                      dataKey="month"
+                      tick={{ fontSize: 11, fontWeight: 700, fill: '#94A3B8' }}
+                      axisLine={false}
+                      tickLine={false}
+                      interval={0}
                     />
-                    <Line type="monotone" dataKey="revenue" stroke="#1E88E5" strokeWidth={3} dot={{fill: '#1E88E5', r: 4}} activeDot={{r: 6}} />
+                    <YAxis
+                      tick={{ fontSize: 11, fontWeight: 700, fill: '#94A3B8' }}
+                      tickFormatter={v => v >= 1000 ? `₹${v / 1000}k` : `₹${v}`}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                      formatter={(v: number) => [fmtRevenue(v), "Revenue"]}
+                    />
+                    <Line
+                      type="monotone" dataKey="revenue"
+                      stroke="#3B82F6" strokeWidth={4}
+                      dot={{ r: 4, fill: "#3B82F6", strokeWidth: 0 }}
+                      activeDot={{ r: 7, strokeWidth: 0 }}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
-              )}
-            </div>
-          </Card>
+              </div>
+            </Card>
 
-          {/* Appointments Overview Graph */}
-          <Card className="p-5 border border-gray-100">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold text-gray-900">Appointments Overview</h3>
-              <span className="text-sm text-gray-500">This week</span>
-            </div>
-            <div className="h-64">
-              {errorStates.graphs ? (
-                <div className="h-full flex items-center justify-center text-gray-400">No data available</div>
-              ) : (
+            <Card className="bg-white border-none shadow-soft p-6">
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h3 className="text-lg font-black text-gray-900 tracking-tight leading-none">Appointments Overview</h3>
+                  <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-1">This week</p>
+                </div>
+              </div>
+              <div className="h-[220px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={appointmentsData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#757575'}} />
-                    <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#757575'}} />
-                    <Tooltip 
-                      contentStyle={{borderRadius: '8px', border: '1px solid #eee', boxShadow: '0 4px 12px rgba(0,0,0,0.05)'}}
-                      cursor={{fill: '#f5f5f5'}}
+                  <BarChart data={weekly} barSize={24}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                    <XAxis
+                      dataKey="day"
+                      tick={{ fontSize: 11, fontWeight: 700, fill: '#94A3B8' }}
+                      axisLine={false}
+                      tickLine={false}
+                      interval={0}
                     />
-                    <Bar dataKey="appointments" fill="#26A69A" radius={[4, 4, 0, 0]} />
+                    <YAxis
+                      tick={{ fontSize: 11, fontWeight: 700, fill: '#94A3B8' }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                    />
+                    <Bar dataKey="count" fill="#14B8A6" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
+              </div>
+            </Card>
+          </div>
+
+          {/* Management Section */}
+          <div className="space-y-6">
+            <div className="flex bg-gray-200/50 backdrop-blur-sm rounded-2xl p-1.5 gap-1.5 shadow-inner overflow-x-auto">
+              {(["Doctors", "Patients", "Appointments", "Support"] as TabKey[]).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setTab(tab)}
+                  className={`flex-1 py-3 rounded-xl text-sm font-black uppercase tracking-wider transition-all duration-200 ${activeTab === tab
+                    ? "bg-white text-primary shadow-md transform scale-[1.02]"
+                    : "text-gray-500 hover:text-gray-700 hover:bg-white/50"
+                    }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-4">
+              {tabLoading ? (
+                <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl shadow-soft">
+                  <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+                  <p className="text-gray-400 font-bold uppercase text-[10px] tracking-[0.2em]">Synchronizing Data...</p>
+                </div>
+              ) : activeTab === "Doctors" ? (
+                doctors.length === 0 ? <p className="text-center text-gray-400 py-12 bg-white rounded-3xl shadow-soft font-bold">No doctors found.</p>
+                  : doctors.map(d => (
+                    <div key={d.id} className="bg-white rounded-2xl border border-gray-50 shadow-soft p-4 flex items-center gap-4 hover:shadow-md transition-all group">
+                      <Av img={d.profile_image} name={d.name} color="blue" />
+                      <div className="flex-1">
+                        <p className="font-black text-gray-800 text-base leading-none group-hover:text-primary transition-colors">{d.name}</p>
+                        <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-1">
+                          {d.specialization ?? "General"} &middot; {d.total_appointments} Consultation{d.total_appointments !== 1 ? "s" : ""}
+                        </p>
+                      </div>
+                      <StatusBadge s={d.status === "Approved" ? "Active" : d.status} />
+                      <button className="w-10 h-10 rounded-xl hover:bg-gray-50 flex items-center justify-center text-gray-300 hover:text-gray-600 transition-colors">
+                        <MoreHorizontal size={20} />
+                      </button>
+                    </div>
+                  ))
+              ) : activeTab === "Patients" ? (
+                patients.length === 0 ? <p className="text-center text-gray-400 py-12 bg-white rounded-3xl shadow-soft font-bold">No patients found.</p>
+                  : patients.map(p => (
+                    <div key={p.id} className="bg-white rounded-2xl border border-gray-50 shadow-soft p-4 flex items-center gap-4 hover:shadow-md transition-all group">
+                      <Av img={p.profile_image} name={p.full_name} color="teal" />
+                      <div className="flex-1">
+                        <p className="font-black text-gray-800 text-base leading-none group-hover:text-primary transition-colors">{p.full_name}</p>
+                        <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-1">
+                          {p.age ? `Age: ${p.age}` : "Age: N/A"}
+                          {p.last_appointment ? ` &middot; Last: ${new Date(p.last_appointment + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })}` : " &middot; New Patient"}
+                        </p>
+                      </div>
+                      <StatusBadge s={p.status} />
+                      <button className="w-10 h-10 rounded-xl hover:bg-gray-50 flex items-center justify-center text-gray-300 hover:text-gray-600 transition-colors">
+                        <MoreHorizontal size={20} />
+                      </button>
+                    </div>
+                  ))
+              ) : activeTab === "Appointments" ? (
+                <>
+                  <div className="flex justify-between items-center mb-4 px-2">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Recent Schedule</p>
+                    {appointments.length > 0 && (
+                      <button
+                        onClick={() => navigate('/admin-appointments')}
+                        className="text-[10px] font-black text-primary hover:text-primary-dark uppercase tracking-widest bg-primary/5 px-3 py-1.5 rounded-lg transition-all"
+                      >
+                        View All →
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {appointments.length === 0 ? (
+                      <p className="col-span-full text-center text-gray-400 py-12 bg-white rounded-3xl shadow-soft font-bold">No appointments found.</p>
+                    ) : (
+                      appointments.slice(0, 4).map(a => (
+                        <div key={a.id} className="bg-white rounded-[2rem] border border-gray-50 shadow-soft p-5 group hover:shadow-md transition-all flex flex-col justify-between min-h-[160px]">
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                              <Av img={doctorMap[a.id]?.image} name={a.doctor_name} />
+                              <div>
+                                <p className="font-black text-gray-800 text-sm leading-none group-hover:text-primary transition-colors line-clamp-1">{a.patient_name}</p>
+                                <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mt-1.5">{a.doctor_name}</p>
+                              </div>
+                            </div>
+                            <StatusBadge s={a.status} />
+                          </div>
+                          <div className="flex items-center justify-between mt-auto pt-4 border-t border-gray-50">
+                            <div className="flex items-center gap-2 text-[10px] font-black text-gray-500 uppercase tracking-tight">
+                              <span>📅 {(() => {
+                                const [y, m, d] = a.date.split("-").map(Number);
+                                return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+                              })()}</span>
+                              <span className="opacity-10 text-lg font-thin">|</span>
+                              <span>🕐 {(() => {
+                                try {
+                                  const [h, m] = a.time.split(":").map(Number);
+                                  return `${(h % 12 || 12).toString().padStart(2, "0")}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
+                                } catch { return a.time; }
+                              })()}</span>
+                            </div>
+                            <button
+                              onClick={() => navigate(`/appointment/${a.id}`)}
+                              className="w-8 h-8 rounded-xl bg-primary/5 text-primary flex items-center justify-center hover:bg-primary hover:text-white transition-all shadow-sm active:scale-95"
+                            >
+                              →
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </>
+              ) : tickets.length === 0 ? (
+                <p className="text-center text-gray-400 py-12 bg-white rounded-3xl shadow-soft font-bold">No support tickets found.</p>
+              ) : (
+                tickets.map(t => (
+                  <div key={t.id} className="bg-white rounded-2xl border border-gray-50 shadow-soft p-5 group hover:shadow-md transition-all">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="font-black text-gray-800 text-base leading-none group-hover:text-primary transition-colors">{t.title}</p>
+                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 uppercase tracking-tighter`}>
+                            {t.role}
+                          </span>
+                        </div>
+                        <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">
+                          REPORTER: <span className="text-gray-600">{getReporterName(t)}</span> &middot; {t.issue_type.replace('_', ' ')}
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <StatusBadge s={t.status} />
+                        <span className={`text-[9px] font-black uppercase tracking-widest ${t.priority === 'High' ? 'text-red-500' : 'text-orange-500'}`}>
+                          {t.priority} PRIORITY
+                        </span>
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-4">
+                      <p className="text-gray-600 text-sm font-medium leading-relaxed">{t.description}</p>
+                    </div>
+                    <div className="flex justify-end">
+                      <Button
+                        size="sm"
+                        variant={t.status === 'Resolved' ? 'outline' : 'primary'}
+                        onClick={() => setSelectedTicket(t)}
+                        className="h-9 px-4 text-xs font-black uppercase tracking-wider"
+                      >
+                        {t.status === 'Resolved' ? 'View Resolution' : 'Manage Issue'}
+                      </Button>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
-          </Card>
+          </div>
         </div>
+      </ScreenContainer>
 
-        {/* Pending Approvals */}
-        <Card className="p-5 border-l-4 border-l-[#FB8C00] flex items-center justify-between cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/doctor-approvals')}>
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center">
-              <AlertCircle size={24} className="text-[#FB8C00]" />
+      {/* Ticket Management Modal */}
+      <Modal
+        isOpen={!!selectedTicket}
+        onClose={() => setSelectedTicket(null)}
+        title={`Support Ticket #${selectedTicket?.id}`}
+        description="Review user issue and provide a resolution confirmation."
+      >
+        {selectedTicket && (
+          <div className="space-y-6 pt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-gray-50 p-3 rounded-xl border border-gray-100">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Reporter</p>
+                <p className="text-sm font-bold text-gray-800">
+                  {getReporterName(selectedTicket)}
+                </p>
+                <p className="text-[10px] text-gray-500 uppercase font-bold">{selectedTicket.role}</p>
+              </div>
+              <div className="bg-gray-50 p-3 rounded-xl border border-gray-100">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Status</p>
+                <StatusBadge s={selectedTicket.status} />
+              </div>
             </div>
-            <div>
-              <h3 className="text-lg font-bold text-gray-900">Pending Approvals</h3>
-              <p className="text-sm text-gray-500">
-                {errorStates.pending ? "No data available" : `${pendingCount} doctors waiting for review`}
-              </p>
+
+            <div className="space-y-2">
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Issue Description</p>
+              <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                <p className="text-sm text-gray-700 font-medium leading-relaxed">{selectedTicket.description}</p>
+              </div>
             </div>
-          </div>
-          <ChevronRight size={24} className="text-gray-400" />
-        </Card>
 
-        {/* Management Tabs */}
-        <div>
-          <div className="flex p-1 bg-gray-100 rounded-xl mb-6 max-w-lg overflow-x-auto">
-            {(['doctors', 'patients', 'appointments', 'payments'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`flex-1 min-w-[100px] py-3 text-sm font-medium rounded-lg capitalize transition-all ${activeTab === tab ? 'bg-white text-[#1E88E5] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
-
-          <div className="space-y-4">
-            {errorStates.tab ? (
-              <div className="p-12 text-center text-gray-400 bg-white rounded-xl border border-gray-100">No data available</div>
+            {selectedTicket.status !== 'Resolved' ? (
+              <div className="space-y-4 pt-2 border-t border-gray-100">
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Resolution Confirmation</label>
+                  <textarea
+                    value={resolutionNote}
+                    onChange={e => setResolutionNote(e.target.value)}
+                    placeholder="Describe how the issue was resolved..."
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm focus:outline-none focus:border-primary min-h-[120px] resize-none"
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    fullWidth
+                    variant="outline"
+                    onClick={() => handleUpdateStatus(selectedTicket.id, 'Escalated')}
+                  >
+                    Escalate
+                  </Button>
+                  <Button
+                    fullWidth
+                    onClick={() => handleUpdateStatus(selectedTicket.id, 'Resolved', resolutionNote)}
+                    isLoading={isResolving}
+                    disabled={!resolutionNote.trim()}
+                  >
+                    Resolve & Notify
+                  </Button>
+                </div>
+              </div>
             ) : (
-              <>
-                {activeTab === 'doctors' && doctors.map((doc: any) => (
-                  <Card key={doc.id} className="flex items-center justify-between p-5 border border-gray-100">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center font-bold text-[#1E88E5] text-lg">
-                        {doc.full_name?.split(' ').map((n: any) => n[0]).join('') || doc.id}
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-base text-gray-900">{doc.full_name || doc.name}</h3>
-                        <p className="text-sm text-gray-500">{doc.specialization} • {doc.experience_years}y Exp</p>
-                        <p className="text-xs text-gray-400 mt-1">Fee: ₹{doc.fee} • {doc.languages}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <button 
-                        onClick={() => handleDeleteDoctor(doc.id)}
-                        className="p-2 text-red-400 hover:text-red-600 rounded-full hover:bg-red-50"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                      <button className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-50">
-                        <MoreHorizontal size={20} />
-                      </button>
-                    </div>
-                  </Card>
-                ))}
-
-                {activeTab === 'patients' && patients.map((patient: any) => (
-                  <Card key={patient.id} className="flex items-center justify-between p-5 border border-gray-100">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-teal-50 flex items-center justify-center font-bold text-[#26A69A] text-lg">
-                        {patient.name?.split(' ').map((n: any) => n[0]).join('') || patient.id}
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-base text-gray-900">{patient.name}</h3>
-                        <p className="text-sm text-gray-500">{patient.email}</p>
-                        <p className="text-xs text-primary font-bold mt-1">Wallet: ₹{patient.wallet_balance}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <button 
-                        onClick={() => handleDeletePatient(patient.id)}
-                        className="p-2 text-red-400 hover:text-red-600 rounded-full hover:bg-red-50"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                      <button className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-50">
-                        <MoreHorizontal size={20} />
-                      </button>
-                    </div>
-                  </Card>
-                ))}
-
-                {activeTab === 'appointments' && appointments.map((apt: any) => (
-                  <Card key={apt.id} className="p-5 border border-gray-100 flex justify-between items-center">
-                    <div>
-                      <h3 className="font-bold text-base text-gray-900">ID: #{apt.id}</h3>
-                      <p className="text-sm text-gray-500">Patient ID: {apt.patient_id} • Doctor ID: {apt.doctor_id}</p>
-                      <div className="flex items-center gap-4 text-sm text-gray-500 mt-2">
-                        <span className="flex items-center gap-1"><Calendar size={14} /> {apt.date}</span>
-                      </div>
-                    </div>
-                    <Badge variant={apt.status === 'Completed' ? 'success' : apt.status === 'Pending' ? 'warning' : 'info'}>
-                      {apt.status}
-                    </Badge>
-                  </Card>
-                ))}
-
-                {activeTab === 'payments' && payments.map((pay: any) => (
-                  <Card key={pay.id} className="p-5 border border-gray-100 flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-600">
-                        <CreditCard size={20} />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-base text-gray-900">₹{pay.amount}</h3>
-                        <p className="text-sm text-gray-500">Patient ID: {pay.patient_id} • {pay.date}</p>
-                      </div>
-                    </div>
-                    <Badge variant={pay.status === 'Success' ? 'success' : 'warning'}>
-                      {pay.status}
-                    </Badge>
-                  </Card>
-                ))}
-
-                {((activeTab === 'doctors' && doctors.length === 0) || 
-                  (activeTab === 'patients' && patients.length === 0) || 
-                  (activeTab === 'appointments' && appointments.length === 0) ||
-                  (activeTab === 'payments' && payments.length === 0)) && (
-                  <div className="p-12 text-center text-gray-400 bg-white rounded-xl border border-gray-100">No data available</div>
-                )}
-              </>
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Resolution Provided</p>
+                <div className="bg-green-50/50 p-4 rounded-xl border border-green-100">
+                  <p className="text-sm text-green-800 font-medium leading-relaxed">{selectedTicket.resolution_note || "Issue marked as resolved."}</p>
+                </div>
+                <Button fullWidth variant="outline" onClick={() => setSelectedTicket(null)}>Close View</Button>
+              </div>
             )}
           </div>
-        </div>
-      </div>
-    </ScreenContainer>
+        )}
+      </Modal>
+    </div>
   );
 }

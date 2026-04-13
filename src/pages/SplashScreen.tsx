@@ -59,19 +59,19 @@ export function SplashScreen() {
           style={{
             animationDelay: '0s'
           }} />
-
+        
         <div
           className="w-3 h-3 bg-white rounded-full animate-bounce"
           style={{
             animationDelay: '0.15s'
           }} />
-
+        
         <div
           className="w-3 h-3 bg-white rounded-full animate-bounce"
           style={{
             animationDelay: '0.3s'
           }} />
-
+        
       </div>
 
       {/* Version */}

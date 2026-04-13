@@ -3,13 +3,15 @@ import {
   FileText,
   Upload,
   Download,
-  Share2 } from 'lucide-react';
+  Trash2
+} from 'lucide-react';
 import { ScreenContainer } from '../components/layout/ScreenContainer';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { apiGet, apiUpload } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { getSocket } from '../utils/socketUtils';
 
 export function MedicalRecordsVault() {
   const { userId } = useAuth();
@@ -20,14 +22,28 @@ export function MedicalRecordsVault() {
   useEffect(() => {
     if (userId) {
       loadMedicalRecords();
+      
+      // Listen for socket events to refetch records in real-time
+      const socket = getSocket();
+      const onRecordUpdate = () => {
+        loadMedicalRecords();
+      };
+      
+      socket.on('medical_record_uploaded', onRecordUpdate);
+      socket.on('medical_record_shared', onRecordUpdate);
+      
+      return () => {
+        socket.off('medical_record_uploaded', onRecordUpdate);
+        socket.off('medical_record_shared', onRecordUpdate);
+      };
     }
   }, [userId]);
 
   const loadMedicalRecords = async () => {
     setIsLoading(true);
     try {
-      const data = await apiGet('/api/medical-records', { user_id: userId });
-      setRecords(data);
+      const data = await apiGet('/api/medical-records', { user_id: userId, role: 'patient' });
+      setRecords(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to load medical records:', error);
     } finally {
@@ -45,7 +61,7 @@ export function MedicalRecordsVault() {
 
     const allowedExtensions = ['pdf', 'png', 'jpg', 'jpeg', 'doc', 'docx'];
     const extension = file.name.split('.').pop()?.toLowerCase();
-    
+
     if (!extension || !allowedExtensions.includes(extension)) {
       alert(`Unsupported file type. Allowed: ${allowedExtensions.join(', ')}`);
       return;
@@ -58,7 +74,8 @@ export function MedicalRecordsVault() {
 
     try {
       setIsLoading(true);
-      await apiUpload('/api/medical-record/upload', formData);
+      // Corrected to match the backend route
+      await apiUpload('/api/patient/upload-medical-record', formData);
       alert('File uploaded successfully');
       loadMedicalRecords();
     } catch (error) {
@@ -69,9 +86,44 @@ export function MedicalRecordsVault() {
     }
   };
 
-  const handleDownload = (recordId: number) => {
-    const url = `http://localhost:5000/api/medical-record/download/${recordId}?user_id=${userId}&role=patient`;
-    window.open(url, '_blank');
+  const handleDelete = async (recordId: number) => {
+    if (!window.confirm('Are you sure you want to permanently delete this medical record?')) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const res = await fetch(`/api/medical-record/delete/${recordId}?user_id=${userId}&role=patient`, {
+        method: 'DELETE'
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to delete record');
+      }
+
+      alert('Record deleted successfully');
+      loadMedicalRecords();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Deletion failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDownload = (recordId: number, asView = false) => {
+    const url = `/api/medical-record/download/${recordId}?user_id=${userId}&role=patient&view=${asView}`;
+    
+    if (asView) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = ''; 
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
   };
 
   const formatDate = (dateStr: string) => {
@@ -91,11 +143,6 @@ export function MedicalRecordsVault() {
     <ScreenContainer
       title="Medical Records"
       showBack
-      actions={
-        <button className="p-2 text-primary hover:bg-blue-50 rounded-full">
-          <Share2 size={24} />
-        </button>
-      }
     >
       <div className="flex flex-col h-full">
         <div className="px-6 py-6 pb-8">
@@ -125,11 +172,25 @@ export function MedicalRecordsVault() {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleDownload(record.id)}
-                      className="p-3 text-gray-400 hover:text-primary hover:bg-blue-50 rounded-full transition-colors"
+                    <button
+                      onClick={() => handleDownload(record.id, true)}
+                      className="px-4 py-2 text-primary text-sm font-bold bg-primary/5 hover:bg-primary/10 rounded-xl transition-colors hidden sm:block"
+                    >
+                      View
+                    </button>
+                    <button
+                      onClick={() => handleDownload(record.id, false)}
+                      className="p-3 text-gray-400 hover:text-primary hover:bg-blue-50 rounded-full transition-colors flex items-center justify-center"
+                      title="Download File"
                     >
                       <Download size={24} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(record.id)}
+                      className="p-3 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors flex items-center justify-center"
+                      title="Delete Record"
+                    >
+                      <Trash2 size={24} />
                     </button>
                   </div>
                 </Card>
@@ -145,7 +206,7 @@ export function MedicalRecordsVault() {
         </div>
 
         {/* Floating Action Button area */}
-        <div className="sticky bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-100 mt-8 rounded-xl">
+        <div className="sticky bottom-0 bg-white border-t border-gray-100 p-6 z-10 mt-auto">
           <input
             type="file"
             ref={fileInputRef}
@@ -156,7 +217,6 @@ export function MedicalRecordsVault() {
           <Button
             fullWidth
             icon={<Upload size={20} />}
-            className="max-w-md mx-auto"
             onClick={handleUploadClick}
             disabled={isLoading}
           >

@@ -1,63 +1,96 @@
-import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ScreenContainer } from '../components/layout/ScreenContainer';
 import { Button } from '../components/ui/Button';
+import { useProfile } from '../context/ProfileContext';
 
 export function DataPolicyScreen() {
   const navigate = useNavigate();
-  const [policyData, setPolicyData] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { profile } = useProfile();
+  const role = profile?.role || 'patient';
 
-  useEffect(() => {
-    fetchPrivacyInfo();
-  }, []);
-
-  const fetchPrivacyInfo = async () => {
-    try {
-      const response = await fetch("http://localhost:5000/api/privacy-info");
-      const data = await response.json();
-      setPolicyData(data);
-    } catch (error) {
-      console.error('Failed to fetch privacy info:', error);
-    } finally {
-      setIsLoading(false);
+  const getContent = () => {
+    switch (role) {
+      case 'doctor':
+        return {
+          collect: "We collect professional data including your doctor profile, specialization, experience, and availability. We also process your appointment schedule, consultation notes, prescriptions issued, and any medical reports or documents uploaded during consultations.",
+          use: "Your information is used to manage your professional presence, facilitate appointments, enable clinical documentation, and maintain communication with patients under your care.",
+          access: "Administrators may access your profile for verification, auditing, and platform support purposes."
+        };
+      case 'admin':
+        return {
+          collect: "As an administrator, we collect your professional credentials and system interaction logs. This includes data related to user management, appointment oversight, and verification workflows.",
+          use: "We use this data for platform monitoring, security auditing, handling complaints or support requests, and ensuring the overall integrity of the TeleHealth+ system.",
+          access: "Platform-level access is strictly monitored and logged for security and accountability."
+        };
+      default: // patient
+        return {
+          collect: "We collect your profile data, appointment history, prescriptions, consultation messages, and medical records. We also process payment information, medication reminders, and notification preferences.",
+          use: "Your data is used to provide clinical services, process payments, send health reminders, and facilitate secure communication with your healthcare providers.",
+          access: "Authorized healthcare providers you consult with have controlled access to your relevant medical history and records."
+        };
     }
   };
 
+  const content = getContent();
+
   return (
     <ScreenContainer title="Data & Privacy" showBack>
-      <div className="flex flex-col h-full">
-        <div className="flex-1 overflow-y-auto px-6 py-6 text-sm text-text-secondary space-y-4">
-          {isLoading ? (
-            <div className="text-center py-20 text-gray-400 italic">Loading policy...</div>
-          ) : (
-            <>
-              <h3 className="text-lg font-bold text-text-primary">
-                {policyData?.title || "Privacy Policy"}
-              </h3>
-              <p>Last updated: {policyData?.last_updated || "October 24, 2023"}</p>
+      <div className="flex flex-col h-full bg-white">
+        <div className="flex-1 overflow-y-auto px-6 py-6 text-sm text-text-secondary space-y-6">
+          <div>
+            <p className="text-xs text-gray-400 uppercase font-bold tracking-widest mb-1">Last updated: April 11, 2026</p>
+            <h3 className="text-xl font-bold text-text-primary">Privacy protection is our priority</h3>
+          </div>
 
-              {policyData?.sections ? (
-                policyData.sections.map((section: any, index: number) => (
-                  <div key={index}>
-                    <h4 className="font-bold text-text-primary mt-4">
-                      {section.title}
-                    </h4>
-                    <p className="mt-2">{section.content}</p>
-                    {section.bullets && (
-                      <ul className="list-disc pl-5 space-y-1 mt-2">
-                        {section.bullets.map((bullet: string, bIndex: number) => (
-                          <li key={bIndex}>{bullet}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-10 text-gray-400 italic">Policy content unavailable.</div>
-              )}
-            </>
-          )}
+          <section className="space-y-3">
+            <h4 className="font-bold text-text-primary flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs">1</span>
+              Information We Collect
+            </h4>
+            <p className="leading-relaxed">
+              {content.collect}
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h4 className="font-bold text-text-primary flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs">2</span>
+              How We Use Your Information
+            </h4>
+            <p className="leading-relaxed">
+              {content.use}
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h4 className="font-bold text-text-primary flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs">3</span>
+              Data Security
+            </h4>
+            <p className="leading-relaxed">
+              All data is encrypted, stored securely according to applicable platform security standards, and protected with stringent access controls to prevent unauthorized access.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h4 className="font-bold text-text-primary flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs">4</span>
+              Your Rights
+            </h4>
+            <p className="leading-relaxed">
+              You have the right to access, update, and manage your data at any time. You can also request the deletion of your account and associated personal information through the app settings.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h4 className="font-bold text-text-primary flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs">5</span>
+              Account-Specific Access
+            </h4>
+            <p className="leading-relaxed">
+              {content.access}
+            </p>
+          </section>
         </div>
 
         <div className="p-6 border-t border-gray-100 bg-white">

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import {
   Mic,
   MicOff,
@@ -15,6 +16,24 @@ import { ScreenContainer } from '../components/layout/ScreenContainer';
 import { Modal } from '../components/ui/Modal';
 export function ConsultationScreen() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { appointmentId } = useParams<{ appointmentId: string }>();
+
+  const { userId: authId, role: authRole } = useAuth();
+  const patientId = authId
+    ?? Number(localStorage.getItem("user_id"))
+    ?? Number(sessionStorage.getItem("user_id"));
+  const role = authRole
+    ?? localStorage.getItem("role")
+    ?? "patient";
+
+  const navState = location.state as {
+    appointmentId?: number;
+    doctorId?: number;
+    doctorName?: string;
+  } | null;
+
+  const apptId = navState?.appointmentId ?? Number(appointmentId);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [showChat, setShowChat] = useState(false);
@@ -43,7 +62,7 @@ export function ConsultationScreen() {
           src="https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=800&h=1200"
           alt="Doctor Video"
           className="w-full h-full object-cover opacity-90" />
-
+        
 
         {/* Header Overlay */}
         <div className="absolute top-0 left-0 right-0 p-4 pt-8 bg-gradient-to-b from-black/60 to-transparent z-10">
@@ -53,7 +72,7 @@ export function ConsultationScreen() {
               {formatDuration(consultationDuration)}
             </span>
             <span className="flex-1 text-center font-bold">
-              Dr. Sarah Smith
+              {navState?.doctorName || "Dr. Sarah Smith"}
             </span>
             <div className="w-12" /> {/* Spacer for centering */}
           </div>
@@ -65,7 +84,7 @@ export function ConsultationScreen() {
             src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=300&h=400"
             alt="Patient"
             className="w-full h-full object-cover" />
-
+          
         </div>
 
         {/* Controls */}
@@ -74,28 +93,28 @@ export function ConsultationScreen() {
             <button
               onClick={() => setIsMuted(!isMuted)}
               className={`p-4 rounded-full ${isMuted ? 'bg-white text-gray-900' : 'bg-white/20 text-white backdrop-blur-md'}`}>
-
+              
               {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
             </button>
 
             <button
               onClick={() => setIsVideoOff(!isVideoOff)}
               className={`p-4 rounded-full ${isVideoOff ? 'bg-white text-gray-900' : 'bg-white/20 text-white backdrop-blur-md'}`}>
-
+              
               {isVideoOff ? <VideoOff size={24} /> : <Video size={24} />}
             </button>
 
             <button
               onClick={() => setShowEndCallModal(true)}
               className="p-5 rounded-full bg-red-500 text-white shadow-lg shadow-red-500/30 hover:bg-red-600 transform hover:scale-105 transition-all">
-
+              
               <PhoneOff size={28} />
             </button>
 
             <button
               onClick={() => setShowChat(true)}
               className="p-4 rounded-full bg-white/20 text-white backdrop-blur-md relative">
-
+              
               <MessageSquare size={24} />
               <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-red-500 rounded-full border border-white/20" />
             </button>
@@ -117,7 +136,7 @@ export function ConsultationScreen() {
                 <button
                 onClick={() => setShowChat(false)}
                 className="p-2 hover:bg-gray-100 rounded-full">
-
+                
                   <X size={20} />
                 </button>
               </div>
@@ -140,7 +159,7 @@ export function ConsultationScreen() {
                 type="text"
                 placeholder="Type a message..."
                 className="flex-1 h-10 px-4 rounded-full bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/20" />
-
+              
                 <button className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center">
                   <Send size={18} />
                 </button>
@@ -160,7 +179,7 @@ export function ConsultationScreen() {
         cancelText="Continue"
         onConfirm={handleEndCall}
         variant="danger" />
-
+      
     </ScreenContainer>);
 
 }

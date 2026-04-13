@@ -27,7 +27,7 @@ export function StatsCard({
         {trend &&
         <p
           className={`text-xs font-medium ${trendUp ? 'text-success' : 'text-red-500'}`}>
-
+          
             {trend}
           </p>
         }

@@ -1,230 +1,185 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
+  User,
   Calendar,
-  Clock,
+  FileText,
+  Activity,
   Video,
+  Clock,
+  ChevronRight,
   AlertCircle,
-  Stethoscope,
-  Activity } from
+  Droplet } from
 'lucide-react';
 import { ScreenContainer } from '../components/layout/ScreenContainer';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { apiGet } from '../services/api';
-
 export function PatientDetailsScreen() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const appointmentId = searchParams.get('appointment_id');
-  
-  const [appointment, setAppointment] = useState<any>(null);
-  const [consultationStatus, setConsultationStatus] = useState<string>('Pending');
-  const [isLoading, setIsLoading] = useState(true);
+  const patient = {
+    name: 'Alice Johnson',
+    age: 28,
+    gender: 'Female',
+    bloodGroup: 'O+',
+    image:
+    'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=300&h=300',
+    symptoms: ['Severe Headache', 'Nausea', 'Sensitivity to Light'],
+    conditions: ['Migraine', 'Seasonal Allergies'],
+    history: [
+    {
+      date: 'Oct 10, 2023',
+      diagnosis: 'Viral Fever',
+      doctor: 'Dr. Smith'
+    },
+    {
+      date: 'Sep 15, 2023',
+      diagnosis: 'Regular Checkup',
+      doctor: 'Dr. Wilson'
+    }]
 
-  // Persistence: Restore session from localStorage
-  const userId = localStorage.getItem('user_id');
-  const role = localStorage.getItem('role');
-
-  useEffect(() => {
-    // Session Verification
-    if (!userId || !role) {
-      console.warn('Session missing, redirecting to login');
-      navigate('/login');
-      return;
-    }
-
-    if (!appointmentId) {
-      navigate('/upcoming-appointments');
-      return;
-    }
-
-    loadData();
-  }, [appointmentId, userId, role]);
-
-  const loadData = async () => {
-    try {
-      if (!isLoading) setIsLoading(true);
-      
-      const aptData = await apiGet(`/api/appointment/${appointmentId}`);
-      setAppointment(aptData);
-
-      const statusData = await apiGet(`/api/consultation/status/${appointmentId}`, {
-        user_id: userId,
-        role: role
-      });
-      setConsultationStatus(statusData.consultation_status);
-
-    } catch (error) {
-      console.error('Failed to load appointment details:', error);
-    } finally {
-      setIsLoading(false);
-    }
   };
-
-  useEffect(() => {
-    if (appointmentId && consultationStatus === 'Pending') {
-      const pollInterval = setInterval(async () => {
-        try {
-          const statusData = await apiGet(`/api/consultation/status/${appointmentId}`, {
-            user_id: userId,
-            role: role
-          });
-          setConsultationStatus(statusData.consultation_status);
-        } catch (e) {
-          console.error("Polling error", e);
-        }
-      }, 10000);
-      return () => clearInterval(pollInterval);
-    }
-  }, [appointmentId, consultationStatus, userId, role]);
-
-  if (isLoading) {
-    return (
-      <ScreenContainer title="Appointment Details" showBack>
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-        </div>
-      </ScreenContainer>
-    );
-  }
-
-  if (!appointment) {
-    return (
-      <ScreenContainer title="Appointment Details" showBack>
-        <div className="p-6 text-center">
-          <AlertCircle className="mx-auto text-red-500 mb-2" size={48} />
-          <p className="text-gray-500">Appointment not found.</p>
-        </div>
-      </ScreenContainer>
-    );
-  }
-
-  const isReady = consultationStatus === 'Ready' || consultationStatus === 'Live';
-
   return (
-    <ScreenContainer title="Appointment Details" showBack className="bg-gray-50">
-      <div className="px-6 py-6 space-y-6">
-        {/* Doctor Info Card */}
-        <Card className="p-6">
-          <div className="flex items-center gap-5 mb-6">
-            <div className="w-20 h-20 rounded-2xl bg-blue-50 flex items-center justify-center text-primary overflow-hidden border-2 border-white shadow-sm">
-                {appointment.doctor_image ? (
-                    <img src={appointment.doctor_image} alt={appointment.doctor_name} className="w-full h-full object-cover" />
-                ) : (
-                    <Stethoscope size={40} />
-                )}
-            </div>
-            <div className="flex-1">
-              <h2 className="text-xl font-bold text-gray-900">{appointment.doctor_name}</h2>
-              <p className="text-primary font-medium">{appointment.specialization}</p>
-              <div className="flex items-center gap-2 mt-2">
-                <Badge variant={appointment.status === 'Completed' ? 'success' : 'info'}>
-                  {appointment.status}
-                </Badge>
-                {isReady && (
-                   <Badge variant="success" className="animate-pulse">Live Now</Badge>
-                )}
-              </div>
+    <ScreenContainer title="Patient Profile" showBack className="bg-gray-50">
+      {/* Header Profile */}
+      <div className="bg-white px-6 py-8 rounded-b-[32px] shadow-sm mb-6">
+        <div className="flex items-start gap-6">
+          <div className="relative">
+            <img
+              src={patient.image}
+              alt={patient.name}
+              className="w-24 h-24 rounded-2xl object-cover shadow-md" />
+            
+            <div className="absolute -bottom-2 -right-2 bg-white p-1 rounded-lg shadow-sm">
+              <Badge variant="info" className="text-xs px-2 py-1">
+                New
+              </Badge>
             </div>
           </div>
-
-          <div className="grid grid-cols-2 gap-4 pt-6 border-t border-gray-100">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
-                <Calendar size={20} />
-              </div>
-              <div>
-                <p className="text-xs text-gray-400 font-bold uppercase">Date</p>
-                <p className="font-bold text-gray-700">{appointment.date}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
-                <Clock size={20} />
-              </div>
-              <div>
-                <p className="text-xs text-gray-400 font-bold uppercase">Time</p>
-                <p className="font-bold text-gray-700">{appointment.time || appointment.time_slot}</p>
-              </div>
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-gray-900">{patient.name}</h1>
+            <p className="text-gray-500 text-base mb-4">Patient ID: #8832</p>
+            <div className="flex gap-3">
+              <span className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-md text-sm font-bold">
+                {patient.age} Years
+              </span>
+              <span className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-md text-sm font-bold">
+                {patient.gender}
+              </span>
             </div>
           </div>
-        </Card>
+        </div>
 
-        {/* Appointment Status / Consultation Section */}
-        <Card className="overflow-hidden border-none shadow-md">
-          <div className={`p-4 flex items-center justify-between ${isReady ? 'bg-green-50' : 'bg-blue-50'}`}>
-            <div className="flex items-center gap-2">
-               <Activity size={20} className={isReady ? 'text-green-600' : 'text-blue-600'} />
-               <h3 className={`font-bold uppercase tracking-wide ${isReady ? 'text-green-800' : 'text-blue-800'}`}>
-                 Consultation Status
-               </h3>
-            </div>
-            <span className={`font-bold ${isReady ? 'text-green-600' : 'text-blue-600'}`}>
-              {consultationStatus}
+        {/* Vitals Row */}
+        <div className="grid grid-cols-3 gap-4 mt-8">
+          <div className="bg-red-50 p-4 rounded-xl border border-red-100 flex flex-col items-center">
+            <Droplet size={24} className="text-red-500 mb-2" />
+            <span className="text-sm text-red-400 font-bold uppercase">
+              Blood
+            </span>
+            <span className="text-xl font-bold text-red-600">
+              {patient.bloodGroup}
             </span>
           </div>
-          <div className="p-6">
-            {isReady ? (
-               <div className="text-center">
-                 <p className="text-gray-600 mb-4">The doctor is ready for your consultation. You can join the video call now.</p>
-                 <Button 
-                   fullWidth 
-                   icon={<Video size={20} />} 
-                   onClick={() => navigate('/patient-waiting-room', { 
-                     state: { 
-                       appointmentId: appointment.id,
-                       doctorName: appointment.doctor_name,
-                       specialization: appointment.specialization
-                     } 
-                   })}
-                 >
-                   Join Consultation
-                 </Button>
-               </div>
-            ) : (
-               <div className="text-center">
-                 <p className="text-gray-500 italic">
-                   {appointment.status === 'Completed' 
-                     ? 'This consultation has been successfully completed.' 
-                     : 'Please check back here at the scheduled time to join your consultation.'}
-                 </p>
-               </div>
+          <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex flex-col items-center">
+            <Activity size={24} className="text-blue-500 mb-2" />
+            <span className="text-sm text-blue-400 font-bold uppercase">
+              Height
+            </span>
+            <span className="text-xl font-bold text-blue-600">165cm</span>
+          </div>
+          <div className="bg-green-50 p-4 rounded-xl border border-green-100 flex flex-col items-center">
+            <Activity size={24} className="text-green-500 mb-2" />
+            <span className="text-sm text-green-400 font-bold uppercase">
+              Weight
+            </span>
+            <span className="text-xl font-bold text-green-600">60kg</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-6 space-y-8 pb-8">
+        {/* Current Symptoms */}
+        <Card className="border-none shadow-md overflow-hidden">
+          <div className="bg-orange-50 p-4 border-b border-orange-100 flex items-center gap-2">
+            <AlertCircle size={20} className="text-orange-600" />
+            <h3 className="font-bold text-orange-800 text-base uppercase tracking-wide">
+              Reported Symptoms
+            </h3>
+          </div>
+          <div className="p-5 flex flex-wrap gap-3">
+            {patient.symptoms.map((symptom, index) =>
+            <span
+              key={index}
+              className="px-4 py-2 bg-white border border-gray-200 rounded-full text-sm font-medium text-gray-700 shadow-sm">
+              
+                {symptom}
+              </span>
             )}
           </div>
         </Card>
 
-        {/* Patient Info Summary */}
+        {/* Medical History Timeline */}
         <div>
-           <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 px-1">Patient Details</h3>
-           <Card className="p-4 space-y-4">
-              <div className="flex justify-between items-center py-2 border-b border-gray-50">
-                 <span className="text-gray-500">Reason for Visit</span>
-                 <span className="font-bold text-gray-800">{appointment.reason || 'General Consultation'}</span>
+          <h3 className="text-base font-bold text-gray-500 uppercase tracking-wider mb-4 ml-1">
+            History
+          </h3>
+          <div className="space-y-0 relative pl-5">
+            <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-gray-200" />
+            {patient.history.map((record, index) =>
+            <div key={index} className="flex gap-6 mb-6 relative">
+                <div className="w-5 h-5 rounded-full bg-primary border-4 border-white shadow-sm flex-shrink-0 z-10 mt-1" />
+                <Card className="flex-1 p-4 border-none shadow-sm">
+                  <div className="flex justify-between items-start mb-2">
+                    <h4 className="font-bold text-gray-900 text-lg">
+                      {record.diagnosis}
+                    </h4>
+                    <span className="text-sm text-gray-400">{record.date}</span>
+                  </div>
+                  <p className="text-sm text-gray-500">{record.doctor}</p>
+                </Card>
               </div>
-              <div className="flex justify-between items-center py-2 border-b border-gray-50">
-                 <span className="text-gray-500">Last Vital Check</span>
-                 <span className="font-bold text-gray-800">Normal</span>
-              </div>
-              <div className="flex justify-between items-center py-2">
-                 <span className="text-gray-500">Notes</span>
-                 <span className="text-sm text-gray-400">None provided</span>
-              </div>
-           </Card>
+            )}
+          </div>
         </div>
 
-        {/* Back Action */}
-        <div className="pt-4">
+        {/* Reports */}
+        <div>
+          <h3 className="text-base font-bold text-gray-500 uppercase tracking-wider mb-4 ml-1">
+            Recent Reports
+          </h3>
+          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+            {[1, 2].map((i) =>
+            <div
+              key={i}
+              className="min-w-[180px] bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col gap-3">
+              
+                <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center text-primary">
+                  <FileText size={24} />
+                </div>
+                <div>
+                  <p className="font-bold text-base text-gray-900 truncate">
+                    Blood Test
+                  </p>
+                  <p className="text-sm text-gray-400">24 Oct • PDF</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Sticky Action Button */}
+        <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20 mt-8 rounded-xl">
           <Button
-            variant="outline"
             fullWidth
-            onClick={() => navigate('/upcoming-appointments')}
-          >
-            Back to Appointments
+            onClick={() => navigate('/doctor-video-call')}
+            className="shadow-lg shadow-primary/30 h-14 text-lg max-w-md mx-auto"
+            icon={<Video size={22} />}>
+            
+            Start Consultation
           </Button>
         </div>
       </div>
-    </ScreenContainer>
-  );
+    </ScreenContainer>);
+
 }
